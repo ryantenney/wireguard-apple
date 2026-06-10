@@ -158,13 +158,25 @@ A failover group is **not** a separate data type stored in JSON. It's a `NETunne
 
 ```
 providerConfiguration = [
-    "FailoverGroupId":    UUID string (identifies this as a failover group)
-    "FailoverConfigs":    [String] (array of wg-quick config strings)
-    "FailoverConfigNames": [String] (display names, parallel to configs)
-    "FailoverSettings":   Data (JSON-encoded FailoverSettings)
-    "UID":                uid_t (macOS only)
+    "FailoverGroupId":     UUID string (identifies this as a failover group)
+    "FailoverConfigRefs":  [Data] (keychain persistent refs, one wg-quick config per member)
+    "FailoverConfigNames": [String] (display names, parallel to refs)
+    "FailoverSettings":    Data (JSON-encoded FailoverSettings)
+    "UID":                 uid_t (macOS only)
 ]
 ```
+
+Member configs (which contain private keys) are **never stored in
+`providerConfiguration` itself** — that dictionary is persisted in the system
+NE preferences, not the keychain. Each member's wg-quick config is a separate
+keychain item owned by the group; the dictionary holds only persistent
+references. The extension resolves them with `Keychain.openReference` at
+startup. (Versions prior to the keychain migration stored plaintext configs
+under a legacy `FailoverConfigs` key; `TunnelsManager.create()` migrates those
+into the keychain on launch, and the extension retains a read-only fallback so
+on-demand activation keeps working until the app has run once post-upgrade.)
+The group's keychain items are created/superseded transactionally around
+`saveToPreferences` and deleted when the group is removed.
 
 The `passwordReference` is borrowed from the primary tunnel's Keychain entry (the wg-quick config for the primary is already stored there by the regular tunnel).
 

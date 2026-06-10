@@ -498,10 +498,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // MARK: - Tunnel-in-Tunnel Setup
 
     private func loadTiTConfigs(from providerConfig: [String: Any]?) {
-        guard
-            let outerConfigString = providerConfig?["TiTOuterConfig"] as? String,
-            let innerConfigString = providerConfig?["TiTInnerConfig"] as? String
-        else { return }
+        // Member configs are stored as keychain references. The plaintext keys
+        // are read only as a legacy fallback for groups created before the
+        // keychain migration (the app migrates them on its next launch).
+        let outerConfigString: String?
+        let innerConfigString: String?
+        if let outerRef = providerConfig?["TiTOuterConfigRef"] as? Data,
+           let innerRef = providerConfig?["TiTInnerConfigRef"] as? Data {
+            outerConfigString = Keychain.openReference(called: outerRef)
+            innerConfigString = Keychain.openReference(called: innerRef)
+            if outerConfigString == nil || innerConfigString == nil {
+                wg_log(.error, staticMessage: "TiT: could not open member configs from keychain")
+            }
+        } else {
+            outerConfigString = providerConfig?["TiTOuterConfig"] as? String
+            innerConfigString = providerConfig?["TiTInnerConfig"] as? String
+        }
+
+        guard let outerConfigString = outerConfigString,
+              let innerConfigString = innerConfigString else { return }
 
         let outerName = providerConfig?["TiTOuterName"] as? String
         let innerName = providerConfig?["TiTInnerName"] as? String
@@ -517,10 +532,26 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     private func loadFailoverConfigs(from providerConfig: [String: Any]?) {
-        guard let configStrings = providerConfig?["FailoverConfigs"] as? [String] else { return }
+        // Member configs are stored as keychain references. The plaintext
+        // FailoverConfigs key is read only as a legacy fallback for groups
+        // created before the keychain migration (the app migrates them on its
+        // next launch).
+        let configStrings: [String?]
+        if let refs = providerConfig?["FailoverConfigRefs"] as? [Data] {
+            configStrings = refs.map { ref in
+                let config = Keychain.openReference(called: ref)
+                if config == nil {
+                    wg_log(.error, staticMessage: "Failover: could not open a member config from keychain")
+                }
+                return config
+            }
+        } else if let legacyConfigs = providerConfig?["FailoverConfigs"] as? [String] {
+            configStrings = legacyConfigs
+        } else {
+            return
+        }
 
         let names = providerConfig?["FailoverConfigNames"] as? [String] ?? []
-        failoverConfigNames = names
 
         // Decode settings to check for persistent keepalive override
         var keepaliveOverride: UInt16?
@@ -529,8 +560,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             keepaliveOverride = settings.persistentKeepaliveOverride
         }
 
-        failoverConfigs = configStrings.enumerated().compactMap { index, configString in
+        // Parse configs and names together so a dropped (unreadable/unparseable)
+        // member can't shift the index-to-name alignment used in failover events.
+        let parsed: [(name: String, config: TunnelConfiguration)] = configStrings.enumerated().compactMap { index, configString in
             let name = names.indices.contains(index) ? names[index] : nil
+            guard let configString = configString else { return nil }
             do {
                 let config = try TunnelConfiguration(fromWgQuickConfig: configString, called: name)
                 // Apply persistent keepalive override if configured
@@ -541,14 +575,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                         p.persistentKeepAlive = effectiveValue
                         return p
                     }
-                    return TunnelConfiguration(name: config.name, interface: config.interface, peers: modifiedPeers)
+                    return (name ?? "config #\(index)", TunnelConfiguration(name: config.name, interface: config.interface, peers: modifiedPeers))
                 }
-                return config
+                return (name ?? "config #\(index)", config)
             } catch {
                 wg_log(.error, message: "Failover: failed to parse config #\(index) '\(name ?? "unknown")': \(error)")
                 return nil
             }
         }
+        failoverConfigs = parsed.map { $0.config }
+        failoverConfigNames = parsed.map { $0.name }
 
         if let override = keepaliveOverride {
             wg_log(.info, message: "Failover: persistent keepalive override = \(override)s applied to all peers")

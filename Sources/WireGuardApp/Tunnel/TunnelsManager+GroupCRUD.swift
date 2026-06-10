@@ -6,6 +6,31 @@ import NetworkExtension
 
 // MARK: - TunnelGroupSpec Protocol
 
+/// Result of building a group's providerConfiguration. Member configs are
+/// stored as individual keychain items (never plaintext in the NE preferences),
+/// so the build also reports which keychain references it created (to delete if
+/// the subsequent save fails) and which previous references it superseded (to
+/// delete once the save succeeds).
+struct GroupProviderConfigResult {
+    var providerConfiguration: [String: Any]
+    var createdReferences: [Data] = []
+    var obsoleteReferences: [Data] = []
+
+    /// Roll back keychain items created for a build whose save never happened.
+    func discardCreatedReferences() {
+        for ref in createdReferences {
+            Keychain.deleteReference(called: ref)
+        }
+    }
+
+    /// Delete keychain items superseded by a successfully saved build.
+    func deleteObsoleteReferences() {
+        for ref in obsoleteReferences {
+            Keychain.deleteReference(called: ref)
+        }
+    }
+}
+
 /// Protocol that each group type implements to provide its specific configuration building logic.
 protocol TunnelGroupSpec {
     var groupKind: TunnelGroupKind { get }
@@ -15,8 +40,10 @@ protocol TunnelGroupSpec {
     /// Validate the spec, returning an error message string if invalid, or nil if valid.
     func validate() -> String?
 
-    /// Build the providerConfiguration dictionary. Returns nil on failure.
-    func buildProviderConfiguration(tunnelsManager: TunnelsManager, existing: [String: Any]?) -> [String: Any]?
+    /// Build the providerConfiguration dictionary, storing member configs in the
+    /// keychain. Returns nil on failure (any keychain items created during a
+    /// failed build are already rolled back).
+    func buildProviderConfiguration(tunnelsManager: TunnelsManager, existing: [String: Any]?) -> GroupProviderConfigResult?
 
     /// Get the passwordReference from the appropriate source tunnel.
     func passwordReference(from tunnelsManager: TunnelsManager) -> Data?
@@ -37,43 +64,73 @@ struct FailoverGroupSpec: TunnelGroupSpec {
         return nil
     }
 
-    func buildProviderConfiguration(tunnelsManager: TunnelsManager, existing: [String: Any]?) -> [String: Any]? {
-        // Build a lookup of existing stored configs for fallback
-        var existingConfigByName: [String: String] = [:]
-        if let existing = existing {
-            let existingNames = (existing["FailoverConfigNames"] as? [String]) ?? []
-            let existingConfigs = (existing["FailoverConfigs"] as? [String]) ?? []
-            for (n, c) in zip(existingNames, existingConfigs) {
-                existingConfigByName[n] = c
+    func buildProviderConfiguration(tunnelsManager: TunnelsManager, existing: [String: Any]?) -> GroupProviderConfigResult? {
+        // Build lookups of the group's existing member keychain refs (and any
+        // legacy plaintext configs from before the keychain migration) for
+        // fallback when a member tunnel can no longer be resolved.
+        var existingRefByName: [String: Data] = [:]
+        var legacyConfigByName: [String: String] = [:]
+        let existingNames = (existing?["FailoverConfigNames"] as? [String]) ?? []
+        if let existingRefs = existing?["FailoverConfigRefs"] as? [Data] {
+            for (n, r) in zip(existingNames, existingRefs) {
+                existingRefByName[n] = r
+            }
+        }
+        if let legacyConfigs = existing?["FailoverConfigs"] as? [String] {
+            for (n, c) in zip(existingNames, legacyConfigs) {
+                legacyConfigByName[n] = c
             }
         }
 
-        // Resolve all tunnel names to wg-quick configs
-        let configs: [(name: String, config: String)] = tunnelNames.compactMap { tunnelName in
+        var created: [Data] = []
+        var kept = Set<Data>()
+
+        // Resolve each member to a keychain reference holding its wg-quick config
+        let members: [(name: String, ref: Data)] = tunnelNames.compactMap { tunnelName in
             if let t = tunnelsManager.tunnel(named: tunnelName),
                let config = t.tunnelConfiguration?.asWgQuickConfig() {
-                return (tunnelName, config)
+                if let ref = Keychain.makeReference(containing: config, called: "\(name): \(tunnelName)") {
+                    created.append(ref)
+                    return (tunnelName, ref)
+                }
+                wg_log(.error, message: "Failover: could not store config for tunnel '\(tunnelName)' in keychain")
+                return nil
             }
-            if let storedConfig = existingConfigByName[tunnelName] {
-                wg_log(.debug, message: "Failover: using stored config for tunnel '\(tunnelName)'")
-                return (tunnelName, storedConfig)
+            if let existingRef = existingRefByName[tunnelName], Keychain.verifyReference(called: existingRef) {
+                wg_log(.debug, message: "Failover: keeping stored config for tunnel '\(tunnelName)'")
+                kept.insert(existingRef)
+                return (tunnelName, existingRef)
+            }
+            if let legacyConfig = legacyConfigByName[tunnelName],
+               let ref = Keychain.makeReference(containing: legacyConfig, called: "\(name): \(tunnelName)") {
+                wg_log(.debug, message: "Failover: migrated stored config for tunnel '\(tunnelName)' to keychain")
+                created.append(ref)
+                return (tunnelName, ref)
             }
             wg_log(.error, message: "Failover: could not load config for tunnel '\(tunnelName)'")
             return nil
         }
 
-        guard configs.count >= 2 else {
+        guard members.count >= 2 else {
             wg_log(.error, staticMessage: "Failover: fewer than 2 valid configs found")
+            for ref in created {
+                Keychain.deleteReference(called: ref)
+            }
             return nil
         }
 
         var providerConfig: [String: Any] = existing ?? [:]
-        providerConfig["FailoverConfigs"] = configs.map { $0.config }
-        providerConfig["FailoverConfigNames"] = configs.map { $0.name }
+        providerConfig["FailoverConfigRefs"] = members.map { $0.ref }
+        providerConfig["FailoverConfigNames"] = members.map { $0.name }
+        providerConfig.removeValue(forKey: "FailoverConfigs") // legacy plaintext storage
         if let settingsData = try? JSONEncoder().encode(settings) {
             providerConfig["FailoverSettings"] = settingsData
         }
-        return providerConfig
+
+        let obsolete = existingRefByName.values.filter { !kept.contains($0) }
+        return GroupProviderConfigResult(providerConfiguration: providerConfig,
+                                         createdReferences: created,
+                                         obsoleteReferences: Array(obsolete))
     }
 
     func passwordReference(from tunnelsManager: TunnelsManager) -> Data? {
@@ -100,15 +157,54 @@ struct TiTGroupSpec: TunnelGroupSpec {
         return nil
     }
 
-    func buildProviderConfiguration(tunnelsManager: TunnelsManager, existing: [String: Any]?) -> [String: Any]? {
-        guard let outerTunnel = tunnelsManager.tunnel(named: outerTunnelName),
-              let outerConfig = outerTunnel.tunnelConfiguration?.asWgQuickConfig() else {
-            wg_log(.error, message: "TiT: could not load config for outer tunnel '\(outerTunnelName)'")
+    func buildProviderConfiguration(tunnelsManager: TunnelsManager, existing: [String: Any]?) -> GroupProviderConfigResult? {
+        var created: [Data] = []
+        var kept = Set<Data>()
+
+        /// Resolve a member to a keychain reference: prefer the live tunnel's
+        /// current config; fall back to the group's existing keychain ref (or a
+        /// pre-migration legacy plaintext config) if the tunnel is unresolvable
+        /// and the member name is unchanged.
+        func resolveMember(tunnelName: String, existingNameKey: String, refKey: String, legacyConfigKey: String) -> Data? {
+            if let t = tunnelsManager.tunnel(named: tunnelName),
+               let config = t.tunnelConfiguration?.asWgQuickConfig() {
+                if let ref = Keychain.makeReference(containing: config, called: "\(name): \(tunnelName)") {
+                    created.append(ref)
+                    return ref
+                }
+                wg_log(.error, message: "TiT: could not store config for tunnel '\(tunnelName)' in keychain")
+                return nil
+            }
+            guard (existing?[existingNameKey] as? String) == tunnelName else {
+                wg_log(.error, message: "TiT: could not load config for tunnel '\(tunnelName)'")
+                return nil
+            }
+            if let existingRef = existing?[refKey] as? Data, Keychain.verifyReference(called: existingRef) {
+                wg_log(.debug, message: "TiT: keeping stored config for tunnel '\(tunnelName)'")
+                kept.insert(existingRef)
+                return existingRef
+            }
+            if let legacyConfig = existing?[legacyConfigKey] as? String,
+               let ref = Keychain.makeReference(containing: legacyConfig, called: "\(name): \(tunnelName)") {
+                wg_log(.debug, message: "TiT: migrated stored config for tunnel '\(tunnelName)' to keychain")
+                created.append(ref)
+                return ref
+            }
+            wg_log(.error, message: "TiT: could not load config for tunnel '\(tunnelName)'")
             return nil
         }
-        guard let innerTunnel = tunnelsManager.tunnel(named: innerTunnelName),
-              let innerConfig = innerTunnel.tunnelConfiguration?.asWgQuickConfig() else {
-            wg_log(.error, message: "TiT: could not load config for inner tunnel '\(innerTunnelName)'")
+
+        guard let outerRef = resolveMember(tunnelName: outerTunnelName,
+                                           existingNameKey: TunnelInTunnelConfigKeys.outerName,
+                                           refKey: TunnelInTunnelConfigKeys.outerConfigRef,
+                                           legacyConfigKey: TunnelInTunnelConfigKeys.outerConfig),
+              let innerRef = resolveMember(tunnelName: innerTunnelName,
+                                           existingNameKey: TunnelInTunnelConfigKeys.innerName,
+                                           refKey: TunnelInTunnelConfigKeys.innerConfigRef,
+                                           legacyConfigKey: TunnelInTunnelConfigKeys.innerConfig) else {
+            for ref in created {
+                Keychain.deleteReference(called: ref)
+            }
             return nil
         }
 
@@ -116,13 +212,25 @@ struct TiTGroupSpec: TunnelGroupSpec {
         var providerConfig = existing ?? [:]
         let newConfig = TunnelInTunnelGroup.makeProviderConfiguration(
             groupId: groupId,
-            outerWgQuick: outerConfig, outerName: outerTunnelName,
-            innerWgQuick: innerConfig, innerName: innerTunnelName
+            outerConfigRef: outerRef, outerName: outerTunnelName,
+            innerConfigRef: innerRef, innerName: innerTunnelName
         )
         for (key, value) in newConfig {
             providerConfig[key] = value
         }
-        return providerConfig
+        // Legacy plaintext storage
+        providerConfig.removeValue(forKey: TunnelInTunnelConfigKeys.outerConfig)
+        providerConfig.removeValue(forKey: TunnelInTunnelConfigKeys.innerConfig)
+
+        var obsolete: [Data] = []
+        for refKey in [TunnelInTunnelConfigKeys.outerConfigRef, TunnelInTunnelConfigKeys.innerConfigRef] {
+            if let oldRef = existing?[refKey] as? Data, !kept.contains(oldRef) {
+                obsolete.append(oldRef)
+            }
+        }
+        return GroupProviderConfigResult(providerConfiguration: providerConfig,
+                                         createdReferences: created,
+                                         obsoleteReferences: obsolete)
     }
 
     func passwordReference(from tunnelsManager: TunnelsManager) -> Data? {
@@ -161,7 +269,7 @@ extension TunnelsManager {
             return
         }
 
-        guard let providerConfig = spec.buildProviderConfiguration(tunnelsManager: self, existing: nil) else {
+        guard let buildResult = spec.buildProviderConfiguration(tunnelsManager: self, existing: nil) else {
             completionHandler(.failure(TunnelsManagerError.tunnelNameEmpty))
             return
         }
@@ -174,6 +282,7 @@ extension TunnelsManager {
 
         let proto = NETunnelProviderProtocol()
         guard let appId = Bundle.main.bundleIdentifier else {
+            buildResult.discardCreatedReferences()
             completionHandler(.failure(TunnelsManagerError.tunnelNameEmpty))
             return
         }
@@ -181,7 +290,7 @@ extension TunnelsManager {
         proto.passwordReference = passwordRef
         proto.serverAddress = spec.groupKind.serverAddress
 
-        var finalConfig = providerConfig
+        var finalConfig = buildResult.providerConfiguration
         #if os(macOS)
         finalConfig["UID"] = getuid()
         #endif
@@ -199,6 +308,7 @@ extension TunnelsManager {
         tunnelProviderManager.saveToPreferences { [weak self] error in
             if let error = error {
                 wg_log(.error, message: "\(kind.displayName): failed to save group manager: \(error)")
+                buildResult.discardCreatedReferences()
                 completionHandler(.failure(TunnelsManagerError.systemErrorOnAddTunnel(systemError: error)))
                 return
             }
@@ -251,7 +361,7 @@ extension TunnelsManager {
         }
 
         let existingConfig = proto.providerConfiguration
-        guard let providerConfig = spec.buildProviderConfiguration(tunnelsManager: self, existing: existingConfig) else {
+        guard let buildResult = spec.buildProviderConfiguration(tunnelsManager: self, existing: existingConfig) else {
             completionHandler(TunnelsManagerError.groupConfigurationInvalid(groupName: spec.name))
             return
         }
@@ -260,6 +370,7 @@ extension TunnelsManager {
             guard !tunnels.contains(where: { $0.name == spec.name })
                     && !failoverGroupTunnels.contains(where: { $0.name == spec.name })
                     && !titGroupTunnels.contains(where: { $0.name == spec.name }) else {
+                buildResult.discardCreatedReferences()
                 completionHandler(TunnelsManagerError.tunnelAlreadyExistsWithThatName)
                 return
             }
@@ -272,7 +383,7 @@ extension TunnelsManager {
             proto.passwordReference = passwordRef
         }
 
-        proto.providerConfiguration = providerConfig
+        proto.providerConfiguration = buildResult.providerConfiguration
 
         let isActivatingOnDemand = !tunnelProviderManager.isOnDemandEnabled && spec.onDemandActivation.isEnabled
         let onDemandOption = spec.onDemandActivation.toActivateOnDemandOption()
@@ -285,9 +396,11 @@ extension TunnelsManager {
         tunnelProviderManager.saveToPreferences { [weak self] error in
             if let error = error {
                 wg_log(.error, message: "\(kind.displayName): failed to save group modification: \(error)")
+                buildResult.discardCreatedReferences()
                 completionHandler(TunnelsManagerError.systemErrorOnModifyTunnel(systemError: error))
                 return
             }
+            buildResult.deleteObsoleteReferences()
             guard let self = self else { return }
 
             #if os(iOS)
@@ -339,12 +452,19 @@ extension TunnelsManager {
 
     func removeGroup(kind: TunnelGroupKind, tunnel: TunnelContainer, completionHandler: @escaping (TunnelsManagerError?) -> Void) {
         let tunnelProviderManager = tunnel.tunnelProvider
-        // Note: we do NOT destroy the passwordReference because it belongs to the source tunnel
+        // The group owns its members' keychain config items; destroy them with the
+        // group. We do NOT destroy the passwordReference — that belongs to the
+        // source tunnel.
+        let proto = tunnelProviderManager.protocolConfiguration as? NETunnelProviderProtocol
+        let memberRefs = TunnelsManager.groupMemberConfigReferences(in: proto?.providerConfiguration)
         tunnelProviderManager.removeFromPreferences { [weak self] error in
             if let error = error {
                 wg_log(.error, message: "\(kind.displayName): failed to remove group manager: \(error)")
                 completionHandler(TunnelsManagerError.systemErrorOnRemoveTunnel(systemError: error))
                 return
+            }
+            for ref in memberRefs {
+                Keychain.deleteReference(called: ref)
             }
             if let self = self {
                 switch kind {
@@ -394,5 +514,94 @@ extension TunnelsManager {
         case .tunnelInTunnel:
             refreshTiTGroupsContaining(tunnelName: tunnelName, oldName: oldName)
         }
+    }
+
+    /// All keychain references owned by a group manager (its members' stored
+    /// configs). Does not include the borrowed passwordReference.
+    static func groupMemberConfigReferences(in providerConfiguration: [String: Any]?) -> [Data] {
+        var refs: [Data] = []
+        if let failoverRefs = providerConfiguration?["FailoverConfigRefs"] as? [Data] {
+            refs.append(contentsOf: failoverRefs)
+        }
+        if let outerRef = providerConfiguration?[TunnelInTunnelConfigKeys.outerConfigRef] as? Data {
+            refs.append(outerRef)
+        }
+        if let innerRef = providerConfiguration?[TunnelInTunnelConfigKeys.innerConfigRef] as? Data {
+            refs.append(innerRef)
+        }
+        return refs
+    }
+}
+
+// MARK: - Legacy plaintext migration
+
+extension NETunnelProviderProtocol {
+    /// Older versions stored group members' full wg-quick configs (private keys
+    /// included) as plaintext in providerConfiguration, which is persisted in
+    /// the system NE preferences rather than the keychain. Move them into
+    /// keychain items and store persistent references instead.
+    /// Returns true if a migration happened and the manager needs saving.
+    func migrateGroupConfigsToKeychainIfNeeded(called name: String) -> Bool {
+        guard var config = providerConfiguration else { return false }
+        var changed = false
+
+        if let legacyConfigs = config["FailoverConfigs"] as? [String] {
+            if config["FailoverConfigRefs"] == nil {
+                let memberNames = config["FailoverConfigNames"] as? [String] ?? []
+                var refs: [Data] = []
+                for (index, legacyConfig) in legacyConfigs.enumerated() {
+                    let memberName = memberNames.indices.contains(index) ? memberNames[index] : "#\(index)"
+                    guard let ref = Keychain.makeReference(containing: legacyConfig, called: "\(name): \(memberName)") else {
+                        // Keychain unavailable — keep the plaintext configs so the
+                        // group still works; migration retries on next launch.
+                        wg_log(.error, message: "Failover: keychain migration failed for group '\(name)', will retry")
+                        for r in refs {
+                            Keychain.deleteReference(called: r)
+                        }
+                        return changed
+                    }
+                    refs.append(ref)
+                }
+                config["FailoverConfigRefs"] = refs
+                wg_log(.info, message: "Failover: migrated \(refs.count) member configs of group '\(name)' to keychain")
+            }
+            config.removeValue(forKey: "FailoverConfigs")
+            changed = true
+        }
+
+        let hasLegacyTiT = config[TunnelInTunnelConfigKeys.outerConfig] != nil
+            || config[TunnelInTunnelConfigKeys.innerConfig] != nil
+        if hasLegacyTiT {
+            let hasRefs = config[TunnelInTunnelConfigKeys.outerConfigRef] != nil
+                && config[TunnelInTunnelConfigKeys.innerConfigRef] != nil
+            if !hasRefs {
+                guard let legacyOuter = config[TunnelInTunnelConfigKeys.outerConfig] as? String,
+                      let legacyInner = config[TunnelInTunnelConfigKeys.innerConfig] as? String else {
+                    return changed
+                }
+                let outerName = config[TunnelInTunnelConfigKeys.outerName] as? String ?? "outer"
+                let innerName = config[TunnelInTunnelConfigKeys.innerName] as? String ?? "inner"
+                guard let outerRef = Keychain.makeReference(containing: legacyOuter, called: "\(name): \(outerName)") else {
+                    wg_log(.error, message: "TiT: keychain migration failed for group '\(name)', will retry")
+                    return changed
+                }
+                guard let innerRef = Keychain.makeReference(containing: legacyInner, called: "\(name): \(innerName)") else {
+                    wg_log(.error, message: "TiT: keychain migration failed for group '\(name)', will retry")
+                    Keychain.deleteReference(called: outerRef)
+                    return changed
+                }
+                config[TunnelInTunnelConfigKeys.outerConfigRef] = outerRef
+                config[TunnelInTunnelConfigKeys.innerConfigRef] = innerRef
+                wg_log(.info, message: "TiT: migrated member configs of group '\(name)' to keychain")
+            }
+            config.removeValue(forKey: TunnelInTunnelConfigKeys.outerConfig)
+            config.removeValue(forKey: TunnelInTunnelConfigKeys.innerConfig)
+            changed = true
+        }
+
+        if changed {
+            providerConfiguration = config
+        }
+        return changed
     }
 }

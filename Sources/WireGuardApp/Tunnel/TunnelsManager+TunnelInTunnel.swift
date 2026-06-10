@@ -37,7 +37,7 @@ extension TunnelsManager {
     func refreshTiTGroupsContaining(tunnelName: String, oldName: String? = nil) {
         for groupTunnel in titGroupTunnels {
             guard let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-                  var providerConfig = proto.providerConfiguration else {
+                  let providerConfig = proto.providerConfiguration else {
                 continue
             }
 
@@ -53,16 +53,13 @@ extension TunnelsManager {
                 if innerName == oldName { innerName = tunnelName }
             }
 
-            // Rebuild configs from current tunnel states
-            if let outerTunnel = self.tunnel(named: outerName),
-               let outerConfig = outerTunnel.tunnelConfiguration?.asWgQuickConfig() {
-                providerConfig[TunnelInTunnelConfigKeys.outerConfig] = outerConfig
-                providerConfig[TunnelInTunnelConfigKeys.outerName] = outerName
-            }
-            if let innerTunnel = self.tunnel(named: innerName),
-               let innerConfig = innerTunnel.tunnelConfiguration?.asWgQuickConfig() {
-                providerConfig[TunnelInTunnelConfigKeys.innerConfig] = innerConfig
-                providerConfig[TunnelInTunnelConfigKeys.innerName] = innerName
+            // Rebuild member keychain refs through the spec so unresolvable
+            // members keep their stored configs instead of going stale silently.
+            let spec = TiTGroupSpec(name: groupTunnel.name, outerTunnelName: outerName,
+                                    innerTunnelName: innerName, onDemandActivation: OnDemandActivation())
+            guard let buildResult = spec.buildProviderConfiguration(tunnelsManager: self, existing: providerConfig) else {
+                wg_log(.error, message: "TiT: could not refresh group '\(groupTunnel.name)' after change to '\(tunnelName)'")
+                continue
             }
 
             // Update passwordReference from outer tunnel
@@ -72,8 +69,14 @@ extension TunnelsManager {
                 proto.passwordReference = passwordRef
             }
 
-            proto.providerConfiguration = providerConfig
-            groupTunnel.tunnelProvider.saveToPreferences { [weak self] _ in
+            proto.providerConfiguration = buildResult.providerConfiguration
+            groupTunnel.tunnelProvider.saveToPreferences { [weak self] error in
+                if let error = error {
+                    wg_log(.error, message: "TiT: failed to save refreshed group '\(groupTunnel.name)': \(error)")
+                    buildResult.discardCreatedReferences()
+                    return
+                }
+                buildResult.deleteObsoleteReferences()
                 if let self = self, let index = self.titGroupTunnels.firstIndex(of: groupTunnel) {
                     self.groupListDelegate?.groupModified(kind: .tunnelInTunnel, at: index)
                 }

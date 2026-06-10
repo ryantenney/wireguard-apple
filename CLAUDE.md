@@ -118,7 +118,7 @@ Failover groups allow ordered lists of tunnel configurations with automatic fail
 - `Sources/WireGuardApp/Tunnel/TunnelsManager+Failover.swift` — app-level CRUD, IPC, config sync
 
 ### How It Works
-- Failover groups are `NETunnelProviderManager` instances with multiple wg-quick configs packed into `providerConfiguration`
+- Failover groups are `NETunnelProviderManager` instances; each member's wg-quick config is a keychain item, and `providerConfiguration` holds only persistent references (`FailoverConfigRefs`) plus names/settings — never plaintext configs
 - `ConnectionHealthMonitor` runs in the Network Extension, polling tx/rx bytes to detect unhealthy connections
 - `WireGuardAdapter.update()` hot-swaps the entire tunnel config (keys, peers, endpoint) without tearing down the VPN
 - IPC message type 0 = UAPI config, type 1 = failover state + runtime stats

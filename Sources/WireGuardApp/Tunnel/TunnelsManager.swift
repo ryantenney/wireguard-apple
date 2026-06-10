@@ -69,11 +69,25 @@ class TunnelsManager {
                 }
                 guard let proto = tunnelManager.protocolConfiguration as? NETunnelProviderProtocol else { continue }
                 // Failover group and TiT group managers borrow their passwordReference from the primary/outer tunnel's
-                // Keychain entry — skip migration and orphan removal for them.
+                // Keychain entry — skip the regular migration and orphan removal for them. They additionally own one
+                // keychain item per member config, all of which must be whitelisted.
                 let isFailoverGroup = proto.providerConfiguration?["FailoverGroupId"] != nil
                 let isTiTGroup = proto.providerConfiguration?[TunnelInTunnelConfigKeys.groupId] != nil
                 if isFailoverGroup || isTiTGroup {
                     if let ref = proto.passwordReference {
+                        refs.insert(ref)
+                    }
+                    // Move any legacy plaintext member configs into the keychain.
+                    // Only for groups we own (macOS keychains are per-user).
+                    #if os(macOS)
+                    let ownsGroup = proto.providerConfiguration?["UID"] as? uid_t == getuid()
+                    #else
+                    let ownsGroup = true
+                    #endif
+                    if ownsGroup && proto.migrateGroupConfigsToKeychainIfNeeded(called: tunnelManager.localizedDescription ?? "unknown") {
+                        tunnelManager.saveToPreferences { _ in }
+                    }
+                    for ref in TunnelsManager.groupMemberConfigReferences(in: proto.providerConfiguration) {
                         refs.insert(ref)
                     }
                     continue

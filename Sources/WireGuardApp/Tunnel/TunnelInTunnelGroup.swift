@@ -42,12 +42,18 @@ struct TunnelInTunnelGroup: Codable, Equatable, Identifiable {
 }
 
 /// providerConfiguration keys used when storing a TiT session in an NETunnelProviderManager.
+/// The member configs themselves live in the keychain; providerConfiguration holds
+/// only persistent references (the legacy plaintext keys remain solely so old
+/// entries can be migrated and read until the app has run once post-upgrade).
 enum TunnelInTunnelConfigKeys {
-    static let groupId     = "TiTGroupId"
-    static let outerConfig = "TiTOuterConfig"
-    static let innerConfig = "TiTInnerConfig"
-    static let outerName   = "TiTOuterName"
-    static let innerName   = "TiTInnerName"
+    static let groupId        = "TiTGroupId"
+    static let outerConfigRef = "TiTOuterConfigRef"
+    static let innerConfigRef = "TiTInnerConfigRef"
+    static let outerName      = "TiTOuterName"
+    static let innerName      = "TiTInnerName"
+    /// Legacy plaintext storage (pre-keychain migration). Do not write.
+    static let outerConfig    = "TiTOuterConfig"
+    static let innerConfig    = "TiTInnerConfig"
 }
 
 // MARK: - Cleanup
@@ -67,18 +73,19 @@ extension TunnelInTunnelGroup {
 
 extension TunnelInTunnelGroup {
 
-    /// Builds the providerConfiguration dictionary for an NETunnelProviderManager from two wg-quick config strings.
+    /// Builds the providerConfiguration dictionary for an NETunnelProviderManager
+    /// from two keychain references to wg-quick configs.
     static func makeProviderConfiguration(
         groupId: String,
-        outerWgQuick: String, outerName: String,
-        innerWgQuick: String, innerName: String
+        outerConfigRef: Data, outerName: String,
+        innerConfigRef: Data, innerName: String
     ) -> [String: Any] {
         return [
-            TunnelInTunnelConfigKeys.groupId:     groupId,
-            TunnelInTunnelConfigKeys.outerConfig: outerWgQuick,
-            TunnelInTunnelConfigKeys.innerConfig: innerWgQuick,
-            TunnelInTunnelConfigKeys.outerName:   outerName,
-            TunnelInTunnelConfigKeys.innerName:   innerName
+            TunnelInTunnelConfigKeys.groupId:        groupId,
+            TunnelInTunnelConfigKeys.outerConfigRef: outerConfigRef,
+            TunnelInTunnelConfigKeys.innerConfigRef: innerConfigRef,
+            TunnelInTunnelConfigKeys.outerName:      outerName,
+            TunnelInTunnelConfigKeys.innerName:      innerName
         ]
     }
 }

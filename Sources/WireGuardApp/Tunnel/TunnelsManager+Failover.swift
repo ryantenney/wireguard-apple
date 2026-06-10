@@ -49,18 +49,17 @@ extension TunnelsManager {
                 configNames[idx] = tunnelName
             }
 
-            // Rebuild configs from current tunnel states
-            let configs: [(name: String, config: String)] = configNames.compactMap { name in
-                guard let t = self.tunnel(named: name),
-                      let config = t.tunnelConfiguration?.asWgQuickConfig() else {
-                    return nil
-                }
-                return (name, config)
+            // Rebuild member keychain refs through the spec so unresolvable
+            // members fall back to their stored configs instead of being dropped.
+            let existingConfig = proto.providerConfiguration
+            let settings = (existingConfig?["FailoverSettings"] as? Data)
+                .flatMap { try? JSONDecoder().decode(FailoverSettings.self, from: $0) } ?? FailoverSettings()
+            let spec = FailoverGroupSpec(name: groupTunnel.name, tunnelNames: configNames,
+                                         settings: settings, onDemandActivation: OnDemandActivation())
+            guard let buildResult = spec.buildProviderConfiguration(tunnelsManager: self, existing: existingConfig) else {
+                wg_log(.error, message: "Failover: could not refresh group '\(groupTunnel.name)' after change to '\(tunnelName)'")
+                continue
             }
-
-            var providerConfig = proto.providerConfiguration ?? [:]
-            providerConfig["FailoverConfigs"] = configs.map { $0.config }
-            providerConfig["FailoverConfigNames"] = configs.map { $0.name }
 
             // Update passwordReference if primary changed
             if let primaryName = configNames.first,
@@ -70,8 +69,14 @@ extension TunnelsManager {
                 proto.passwordReference = passwordRef
             }
 
-            proto.providerConfiguration = providerConfig
-            groupTunnel.tunnelProvider.saveToPreferences { [weak self] _ in
+            proto.providerConfiguration = buildResult.providerConfiguration
+            groupTunnel.tunnelProvider.saveToPreferences { [weak self] error in
+                if let error = error {
+                    wg_log(.error, message: "Failover: failed to save refreshed group '\(groupTunnel.name)': \(error)")
+                    buildResult.discardCreatedReferences()
+                    return
+                }
+                buildResult.deleteObsoleteReferences()
                 if let self = self, let index = self.failoverGroupTunnels.firstIndex(of: groupTunnel) {
                     self.groupListDelegate?.groupModified(kind: .failover, at: index)
                 }
