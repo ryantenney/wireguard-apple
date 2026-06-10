@@ -70,6 +70,13 @@ extension TunnelsManager {
             }
 
             proto.providerConfiguration = buildResult.providerConfiguration
+
+            // On iOS, saving any NE configuration can deactivate the currently
+            // active tunnel — same workaround as in modify()/modifyGroup().
+            #if os(iOS)
+            let activeTunnel = (tunnels + failoverGroupTunnels + titGroupTunnels).first { $0.status == .active || $0.status == .activating }
+            #endif
+
             groupTunnel.tunnelProvider.saveToPreferences { [weak self] error in
                 if let error = error {
                     wg_log(.error, message: "TiT: failed to save refreshed group '\(groupTunnel.name)': \(error)")
@@ -77,7 +84,20 @@ extension TunnelsManager {
                     return
                 }
                 buildResult.deleteObsoleteReferences()
-                if let self = self, let index = self.titGroupTunnels.firstIndex(of: groupTunnel) {
+                guard let self = self else { return }
+
+                #if os(iOS)
+                if let activeTunnel = activeTunnel, activeTunnel !== groupTunnel {
+                    if activeTunnel.status == .inactive || activeTunnel.status == .deactivating {
+                        self.startActivation(of: activeTunnel)
+                    }
+                    if activeTunnel.status == .active || activeTunnel.status == .activating {
+                        activeTunnel.status = .restarting
+                    }
+                }
+                #endif
+
+                if let index = self.titGroupTunnels.firstIndex(of: groupTunnel) {
                     self.groupListDelegate?.groupModified(kind: .tunnelInTunnel, at: index)
                 }
             }

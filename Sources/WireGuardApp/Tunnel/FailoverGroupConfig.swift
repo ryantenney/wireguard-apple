@@ -123,6 +123,10 @@ struct FailoverGroupConfig {
             if lowercasedLine == "[failovergroup]" {
                 parserState = .inGroupSection
                 attributes.removeAll()
+                // Mark the section as present at the header, not only when its
+                // body is processed — a trailing "[FailoverGroup]" with no body
+                // would otherwise be reported as missing.
+                hadGroupSection = true
             } else if lowercasedLine == "[connection]" {
                 parserState = .inConnectionSection
                 attributes.removeAll()
@@ -130,8 +134,14 @@ struct FailoverGroupConfig {
         }
 
         guard hadGroupSection else { throw ParseError.noGroupSection }
-        guard tunnelNames.count >= 2 else { throw ParseError.noConnections }
-        self.tunnelNames = tunnelNames
+
+        // Drop duplicate [Connection] entries (keeping first occurrence) — a
+        // group with the same member twice would fail over to itself.
+        var seenNames = Set<String>()
+        let uniqueNames = tunnelNames.filter { seenNames.insert($0).inserted }
+
+        guard uniqueNames.count >= 2 else { throw ParseError.noConnections }
+        self.tunnelNames = uniqueNames
     }
 
     // MARK: - Serialization

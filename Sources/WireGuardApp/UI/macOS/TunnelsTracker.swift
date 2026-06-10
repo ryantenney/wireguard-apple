@@ -26,6 +26,7 @@ class TunnelsTracker {
     private var tunnelsManager: TunnelsManager
     private var tunnelStatusObservers = [AnyObject]()
     private var failoverGroupStatusObservers = [AnyObject]()
+    private var titGroupStatusObservers = [AnyObject]()
     private(set) var currentTunnel: TunnelContainer? {
         didSet {
             statusMenu?.currentTunnel = currentTunnel
@@ -47,6 +48,12 @@ class TunnelsTracker {
             let groupTunnel = tunnelsManager.failoverGroup(at: index)
             let statusObservationToken = observeStatus(of: groupTunnel)
             failoverGroupStatusObservers.insert(statusObservationToken, at: index)
+        }
+
+        for index in 0 ..< tunnelsManager.numberOfTiTGroups() {
+            let groupTunnel = tunnelsManager.titGroup(at: index)
+            let statusObservationToken = observeStatus(of: groupTunnel)
+            titGroupStatusObservers.insert(statusObservationToken, at: index)
         }
 
         tunnelsManager.tunnelsListDelegate = self
@@ -107,14 +114,17 @@ extension TunnelsTracker: TunnelsManagerGroupListDelegate {
         if groupTunnel.status != .deactivating && groupTunnel.status != .inactive {
             self.currentTunnel = groupTunnel
         }
+        // Each kind has its own observer array — the index is kind-local, so
+        // inserting into the wrong array shifts/drops other groups' observers.
         let statusObservationToken = observeStatus(of: groupTunnel)
-        failoverGroupStatusObservers.insert(statusObservationToken, at: index)
 
         switch kind {
         case .failover:
+            failoverGroupStatusObservers.insert(statusObservationToken, at: index)
             statusMenu?.insertFailoverGroupMenuItem(for: groupTunnel, at: index)
             manageTunnelsRootVC?.tunnelsListVC?.failoverGroupAdded(at: index)
         case .tunnelInTunnel:
+            titGroupStatusObservers.insert(statusObservationToken, at: index)
             manageTunnelsRootVC?.tunnelsListVC?.titGroupAdded(at: index)
         }
     }
@@ -136,6 +146,8 @@ extension TunnelsTracker: TunnelsManagerGroupListDelegate {
             statusMenu?.moveFailoverGroupMenuItem(from: oldIndex, to: newIndex)
             manageTunnelsRootVC?.tunnelsListVC?.failoverGroupMoved(from: oldIndex, to: newIndex)
         case .tunnelInTunnel:
+            let statusObserver = titGroupStatusObservers.remove(at: oldIndex)
+            titGroupStatusObservers.insert(statusObserver, at: newIndex)
             manageTunnelsRootVC?.tunnelsListVC?.titGroupMoved(from: oldIndex, to: newIndex)
         }
     }
@@ -147,6 +159,7 @@ extension TunnelsTracker: TunnelsManagerGroupListDelegate {
             statusMenu?.removeFailoverGroupMenuItem(at: index)
             manageTunnelsRootVC?.tunnelsListVC?.failoverGroupRemoved(at: index)
         case .tunnelInTunnel:
+            titGroupStatusObservers.remove(at: index)
             manageTunnelsRootVC?.tunnelsListVC?.titGroupRemoved(at: index)
         }
     }

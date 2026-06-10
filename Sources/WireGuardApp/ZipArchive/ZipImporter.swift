@@ -71,20 +71,36 @@ class ZipImporter {
                 configs[index] = tunnelConfig
             }
 
-            // Parse failover group configs
+            // Parse failover group configs. Classification was by file-name
+            // suffix only, so a *regular tunnel* named e.g. "office.failovergroup"
+            // lands here too — if group parsing fails, fall back to parsing the
+            // file as a wg-quick config instead of silently dropping it.
             var failoverGroups = [FailoverGroupConfig]()
-            for file in failoverGroupFiles {
+            for (index, file) in failoverGroupFiles.enumerated() {
+                if failoverGroupFiles[..<index].contains(where: { $0.name == file.name && $0.contents == file.contents }) {
+                    continue
+                }
                 guard let fileContents = String(data: file.contents, encoding: .utf8) else { continue }
-                guard let groupConfig = try? FailoverGroupConfig(from: fileContents, called: file.name) else { continue }
-                failoverGroups.append(groupConfig)
+                if let groupConfig = try? FailoverGroupConfig(from: fileContents, called: file.name) {
+                    failoverGroups.append(groupConfig)
+                } else if let tunnelConfig = try? TunnelConfiguration(fromWgQuickConfig: fileContents, called: file.name + failoverGroupSuffix) {
+                    configs.append(tunnelConfig)
+                }
             }
 
-            // Parse tunnel-in-tunnel group configs
+            // Parse tunnel-in-tunnel group configs (same suffix-collision and
+            // duplicate handling as failover groups above)
             var tunnelInTunnelGroups = [TunnelInTunnelGroupConfig]()
-            for file in tunnelInTunnelFiles {
+            for (index, file) in tunnelInTunnelFiles.enumerated() {
+                if tunnelInTunnelFiles[..<index].contains(where: { $0.name == file.name && $0.contents == file.contents }) {
+                    continue
+                }
                 guard let fileContents = String(data: file.contents, encoding: .utf8) else { continue }
-                guard let groupConfig = try? TunnelInTunnelGroupConfig(from: fileContents, called: file.name) else { continue }
-                tunnelInTunnelGroups.append(groupConfig)
+                if let groupConfig = try? TunnelInTunnelGroupConfig(from: fileContents, called: file.name) {
+                    tunnelInTunnelGroups.append(groupConfig)
+                } else if let tunnelConfig = try? TunnelConfiguration(fromWgQuickConfig: fileContents, called: file.name + tunnelInTunnelSuffix) {
+                    configs.append(tunnelConfig)
+                }
             }
 
             let result = ZipImportResult(tunnelConfigurations: configs, failoverGroups: failoverGroups, tunnelInTunnelGroups: tunnelInTunnelGroups)

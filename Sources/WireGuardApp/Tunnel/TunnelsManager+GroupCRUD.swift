@@ -249,7 +249,8 @@ extension TunnelsManager {
     func addGroup(spec: TunnelGroupSpec, completionHandler: @escaping (Result<TunnelContainer, TunnelsManagerError>) -> Void) {
         if let validationError = spec.validate() {
             wg_log(.error, message: "\(spec.groupKind.displayName): \(validationError)")
-            completionHandler(.failure(TunnelsManagerError.tunnelNameEmpty))
+            let error: TunnelsManagerError = spec.name.isEmpty ? .tunnelNameEmpty : .groupConfigurationInvalid(groupName: spec.name)
+            completionHandler(.failure(error))
             return
         }
 
@@ -265,12 +266,12 @@ extension TunnelsManager {
 
         guard let passwordRef = spec.passwordReference(from: self) else {
             wg_log(.error, message: "\(spec.groupKind.displayName): source tunnel has no valid keychain reference")
-            completionHandler(.failure(TunnelsManagerError.tunnelNameEmpty))
+            completionHandler(.failure(TunnelsManagerError.groupConfigurationInvalid(groupName: spec.name)))
             return
         }
 
         guard let buildResult = spec.buildProviderConfiguration(tunnelsManager: self, existing: nil) else {
-            completionHandler(.failure(TunnelsManagerError.tunnelNameEmpty))
+            completionHandler(.failure(TunnelsManagerError.groupConfigurationInvalid(groupName: spec.name)))
             return
         }
 
@@ -283,7 +284,7 @@ extension TunnelsManager {
         let proto = NETunnelProviderProtocol()
         guard let appId = Bundle.main.bundleIdentifier else {
             buildResult.discardCreatedReferences()
-            completionHandler(.failure(TunnelsManagerError.tunnelNameEmpty))
+            completionHandler(.failure(TunnelsManagerError.groupConfigurationInvalid(groupName: spec.name)))
             return
         }
         proto.providerBundleIdentifier = "\(appId).network-extension"
@@ -343,7 +344,8 @@ extension TunnelsManager {
     func modifyGroup(tunnel: TunnelContainer, spec: TunnelGroupSpec, completionHandler: @escaping (TunnelsManagerError?) -> Void) {
         if let validationError = spec.validate() {
             wg_log(.error, message: "\(spec.groupKind.displayName): \(validationError)")
-            completionHandler(TunnelsManagerError.tunnelNameEmpty)
+            let error: TunnelsManagerError = spec.name.isEmpty ? .tunnelNameEmpty : .groupConfigurationInvalid(groupName: spec.name)
+            completionHandler(error)
             return
         }
 
@@ -376,6 +378,22 @@ extension TunnelsManager {
             }
             tunnel.name = spec.name
             tunnelProviderManager.localizedDescription = spec.name
+        }
+
+        // Whether the running tunnel's effective configuration changed.
+        // Member keychain refs rotate on every save, so compare the stable
+        // facts: membership and (for failover) the encoded settings. Member
+        // *content* changes arrive via the refresh paths, not modifyGroup.
+        let isRunningConfigChanged: Bool
+        switch kind {
+        case .failover:
+            isRunningConfigChanged =
+                (existingConfig?["FailoverConfigNames"] as? [String]) != (buildResult.providerConfiguration["FailoverConfigNames"] as? [String])
+                || (existingConfig?["FailoverSettings"] as? Data) != (buildResult.providerConfiguration["FailoverSettings"] as? Data)
+        case .tunnelInTunnel:
+            isRunningConfigChanged =
+                (existingConfig?[TunnelInTunnelConfigKeys.outerName] as? String) != (buildResult.providerConfiguration[TunnelInTunnelConfigKeys.outerName] as? String)
+                || (existingConfig?[TunnelInTunnelConfigKeys.innerName] as? String) != (buildResult.providerConfiguration[TunnelInTunnelConfigKeys.innerName] as? String)
         }
 
         // Update passwordReference from spec
@@ -429,7 +447,10 @@ extension TunnelsManager {
             }
             self.groupListDelegate?.groupModified(kind: kind, at: self.groupTunnels(kind: kind).firstIndex(of: tunnel)!)
 
-            if tunnel.status == .active || tunnel.status == .activating || tunnel.status == .reasserting {
+            // Only drop the live VPN when the change actually affects it —
+            // saving an unmodified edit screen shouldn't restart the tunnel.
+            if isRunningConfigChanged,
+               tunnel.status == .active || tunnel.status == .activating || tunnel.status == .reasserting {
                 tunnel.status = .restarting
                 (tunnel.tunnelProvider.connection as? NETunnelProviderSession)?.stopTunnel()
             }
@@ -486,7 +507,10 @@ extension TunnelsManager {
     }
 
     func getGroupState(kind: TunnelGroupKind, for tunnel: TunnelContainer, completionHandler: @escaping ([String: Any]?) -> Void) {
-        guard tunnel.status == .active,
+        // .reasserting/.restarting still have a live session — a failover swap
+        // reasserts, and refusing to poll then makes the UI go stale exactly
+        // when the state is most interesting.
+        guard tunnel.status == .active || tunnel.status == .reasserting || tunnel.status == .restarting,
               let session = tunnel.tunnelProvider.connection as? NETunnelProviderSession else {
             completionHandler(nil)
             return

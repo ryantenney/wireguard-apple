@@ -12,6 +12,7 @@ enum TunnelsManagerError: WireGuardAppError {
     case systemErrorOnModifyTunnel(systemError: Error)
     case systemErrorOnRemoveTunnel(systemError: Error)
     case tunnelIsPartOfFailoverGroup(groupNames: String)
+    case tunnelIsPartOfTiTGroup(groupNames: String)
     case groupConfigurationInvalid(groupName: String)
 
     var alertText: AlertText {
@@ -31,6 +32,9 @@ enum TunnelsManagerError: WireGuardAppError {
         case .tunnelIsPartOfFailoverGroup(let groupNames):
             return (tr("alertCannotRemoveTunnelInFailoverGroupTitle"),
                     tr(format: "alertCannotRemoveTunnelInFailoverGroupMessage (%@)", groupNames))
+        case .tunnelIsPartOfTiTGroup(let groupNames):
+            return ("Cannot delete tunnel",
+                    "This tunnel is used by the tunnel-in-tunnel group(s): \(groupNames). Remove it from the group(s) first.")
         case .groupConfigurationInvalid(let groupName):
             return ("Cannot save group", "The group '\(groupName)' references tunnels that no longer exist or could not be loaded.")
         }

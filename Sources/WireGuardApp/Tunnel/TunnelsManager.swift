@@ -447,7 +447,7 @@ class TunnelsManager {
         }
         if !referencingTiTGroups.isEmpty {
             let groupNames = referencingTiTGroups.map { $0.name }.joined(separator: ", ")
-            return TunnelsManagerError.tunnelIsPartOfFailoverGroup(groupNames: groupNames)
+            return TunnelsManagerError.tunnelIsPartOfTiTGroup(groupNames: groupNames)
         }
 
         return nil

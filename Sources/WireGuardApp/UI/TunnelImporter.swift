@@ -119,6 +119,17 @@ class TunnelImporter {
         var successCount = 0
         var remaining = groups.count
         for group in groups {
+            // A member's .conf may have failed to import (or be absent from the
+            // zip); creating the group anyway would silently reference nothing.
+            let missing = [group.outerTunnelName, group.innerTunnelName].filter { tunnelsManager.tunnel(named: $0) == nil }
+            guard missing.isEmpty else {
+                wg_log(.error, message: "Cannot import tunnel-in-tunnel group '\(group.name)': missing member tunnel(s) \(missing.joined(separator: ", "))")
+                remaining -= 1
+                if remaining == 0 {
+                    completionHandler(successCount)
+                }
+                continue
+            }
             tunnelsManager.addTiTGroup(
                 name: group.name,
                 outerTunnelName: group.outerTunnelName,
@@ -148,6 +159,19 @@ class TunnelImporter {
         var remaining = groups.count
 
         for group in groups {
+            // A member's .conf may have failed to import (or be absent from the
+            // zip); creating the group with a silently shrunken member list
+            // would misreport success.
+            let missing = group.tunnelNames.filter { tunnelsManager.tunnel(named: $0) == nil }
+            guard missing.isEmpty else {
+                wg_log(.error, message: "Cannot import failover group '\(group.name)': missing member tunnel(s) \(missing.joined(separator: ", "))")
+                remaining -= 1
+                if remaining == 0 {
+                    completionHandler(successCount)
+                }
+                continue
+            }
+
             let settings = FailoverSettings(
                 trafficTimeout: group.trafficTimeout ?? 30,
                 healthCheckInterval: group.healthCheckInterval ?? 10,
