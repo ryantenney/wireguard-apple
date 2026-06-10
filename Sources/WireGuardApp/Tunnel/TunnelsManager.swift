@@ -411,8 +411,9 @@ class TunnelsManager {
         }
     }
 
-    func remove(tunnel: TunnelContainer, completionHandler: @escaping (TunnelsManagerError?) -> Void) {
-        // Check if tunnel is referenced by any failover group
+    /// Delete protection: returns an error if the tunnel is a member of any
+    /// failover or tunnel-in-tunnel group, nil otherwise.
+    private func groupMembershipError(for tunnel: TunnelContainer) -> TunnelsManagerError? {
         let referencingGroups = failoverGroupTunnels.filter { group in
             let proto = group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
             let names = proto?.providerConfiguration?["FailoverConfigNames"] as? [String] ?? []
@@ -420,7 +421,27 @@ class TunnelsManager {
         }
         if !referencingGroups.isEmpty {
             let groupNames = referencingGroups.map { $0.name }.joined(separator: ", ")
-            completionHandler(TunnelsManagerError.tunnelIsPartOfFailoverGroup(groupNames: groupNames))
+            return TunnelsManagerError.tunnelIsPartOfFailoverGroup(groupNames: groupNames)
+        }
+
+        let referencingTiTGroups = titGroupTunnels.filter { group in
+            let proto = group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
+            let config = proto?.providerConfiguration
+            let outerName = config?[TunnelInTunnelConfigKeys.outerName] as? String
+            let innerName = config?[TunnelInTunnelConfigKeys.innerName] as? String
+            return outerName == tunnel.name || innerName == tunnel.name
+        }
+        if !referencingTiTGroups.isEmpty {
+            let groupNames = referencingTiTGroups.map { $0.name }.joined(separator: ", ")
+            return TunnelsManagerError.tunnelIsPartOfFailoverGroup(groupNames: groupNames)
+        }
+
+        return nil
+    }
+
+    func remove(tunnel: TunnelContainer, completionHandler: @escaping (TunnelsManagerError?) -> Void) {
+        if let error = groupMembershipError(for: tunnel) {
+            completionHandler(error)
             return
         }
 
@@ -456,27 +477,8 @@ class TunnelsManager {
     func removeMultiple(tunnels: [TunnelContainer], completionHandler: @escaping (TunnelsManagerError?) -> Void) {
         // Check if any tunnel is referenced by a failover group or TiT group before deleting anything
         for tunnel in tunnels {
-            let referencingGroups = failoverGroupTunnels.filter { group in
-                let proto = group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
-                let names = proto?.providerConfiguration?["FailoverConfigNames"] as? [String] ?? []
-                return names.contains(tunnel.name)
-            }
-            if !referencingGroups.isEmpty {
-                let groupNames = referencingGroups.map { $0.name }.joined(separator: ", ")
-                completionHandler(TunnelsManagerError.tunnelIsPartOfFailoverGroup(groupNames: groupNames))
-                return
-            }
-
-            let referencingTiTGroups = titGroupTunnels.filter { group in
-                let proto = group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
-                let config = proto?.providerConfiguration
-                let outerName = config?[TunnelInTunnelConfigKeys.outerName] as? String
-                let innerName = config?[TunnelInTunnelConfigKeys.innerName] as? String
-                return outerName == tunnel.name || innerName == tunnel.name
-            }
-            if !referencingTiTGroups.isEmpty {
-                let groupNames = referencingTiTGroups.map { $0.name }.joined(separator: ", ")
-                completionHandler(TunnelsManagerError.tunnelIsPartOfFailoverGroup(groupNames: groupNames))
+            if let error = groupMembershipError(for: tunnel) {
+                completionHandler(error)
                 return
             }
         }

@@ -139,7 +139,14 @@ public class ConnectionHealthMonitor {
     }
 
     deinit {
-        stop()
+        // Must not call stop() here: it async-captures self on workQueue, which
+        // would retain an object whose refcount already reached zero and run the
+        // block against freed memory. Cancel the timers directly (DispatchSource
+        // is thread-safe); probe devices are cleaned up by the adapter when the
+        // tunnel stops (stopAllProbes), and the owner is expected to call stop()
+        // before releasing the monitor.
+        healthCheckTimer?.cancel()
+        failbackTimer?.cancel()
     }
 
     // MARK: - Start / Stop
@@ -217,16 +224,25 @@ public class ConnectionHealthMonitor {
     private func evaluateHealth(runtimeConfig: String) {
         let (currentTx, currentRx) = Self.parseTxRxBytes(from: runtimeConfig)
 
-        let txDelta = currentTx - lastTxBytes
-        let rxDelta = currentRx - lastRxBytes
+        // Counters reset to zero whenever the Go device or its peers are
+        // replaced outside our control (adapter.update() uses replace_peers=true,
+        // iOS recreates the device after an offline period, probe promotion
+        // swaps the device). A regression makes the old baseline meaningless —
+        // and unsigned subtraction would trap — so re-baseline and skip this poll.
+        let isFirstPoll = (lastTxBytes == 0 && lastRxBytes == 0)
+        let countersReset = currentTx < lastTxBytes || currentRx < lastRxBytes
+
+        let txDelta = countersReset ? 0 : currentTx - lastTxBytes
+        let rxDelta = countersReset ? 0 : currentRx - lastRxBytes
 
         // Update stored values for next check
-        let isFirstPoll = (lastTxBytes == 0 && lastRxBytes == 0)
         lastTxBytes = currentTx
         lastRxBytes = currentRx
 
-        // Skip evaluation on the first poll — we need a baseline
-        if isFirstPoll {
+        // Skip evaluation on the first poll or after a counter reset — we need
+        // a fresh baseline, and any tx-without-rx observation predates the reset.
+        if isFirstPoll || countersReset {
+            txWithoutRxSince = nil
             return
         }
 

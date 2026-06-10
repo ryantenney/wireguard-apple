@@ -243,8 +243,16 @@ func wgVersion() *C.char {
 //
 // Uses atomic.Value for lock-free reads on the hot path (Read/Write).
 // The only write (swap) happens once during probe promotion.
+//
+// atomic.Value requires every Store/Swap to use the same concrete type, so the
+// inner device is always boxed in a tunHolder — storing tun.Device directly
+// would panic on swap when the dynamic type changes (nullTunDevice → NativeTun).
+type tunHolder struct {
+	dev tun.Device
+}
+
 type swappableTunDevice struct {
-	inner  atomic.Value // stores tun.Device
+	inner  atomic.Value // always stores tunHolder
 	events chan tun.Event
 	closed chan struct{}
 }
@@ -254,14 +262,14 @@ func newSwappableTunDevice(inner tun.Device) *swappableTunDevice {
 		events: make(chan tun.Event, 4),
 		closed: make(chan struct{}),
 	}
-	dev.inner.Store(inner)
+	dev.inner.Store(tunHolder{dev: inner})
 	// Forward initial EventUp
 	dev.events <- tun.EventUp
 	return dev
 }
 
 func (s *swappableTunDevice) getInner() tun.Device {
-	return s.inner.Load().(tun.Device)
+	return s.inner.Load().(tunHolder).dev
 }
 
 func (s *swappableTunDevice) File() *os.File { return nil }
@@ -320,7 +328,7 @@ func (s *swappableTunDevice) Close() error {
 // unblocks any goroutine stuck in nullTunDevice.Read). The read loop in
 // swappableTunDevice.Read will detect the change and retry with the new device.
 func (s *swappableTunDevice) swap(newInner tun.Device) {
-	old := s.inner.Swap(newInner).(tun.Device)
+	old := s.inner.Swap(tunHolder{dev: newInner}).(tunHolder).dev
 	old.Close() // Unblocks any Read() call stuck on the old (null) tun
 }
 

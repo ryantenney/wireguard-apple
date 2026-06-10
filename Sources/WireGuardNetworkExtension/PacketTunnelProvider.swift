@@ -190,7 +190,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         case 1:
             // Failover: get current failover state + runtime stats
-            var state: [String: Any] = [
+            let state: [String: Any] = [
                 "activeIndex": activeConfigIndex,
                 "activeConfig": failoverConfigNames.indices.contains(activeConfigIndex) ? failoverConfigNames[activeConfigIndex] : "unknown",
                 "totalConfigs": failoverConfigs.count,
@@ -200,13 +200,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
             let group = DispatchGroup()
 
+            // The two completions below run on different queues (the monitor's
+            // and the adapter's), so each writes only its own variable; the
+            // merge happens in group.notify, after both have left the group.
+            var monitorSnapshot: [String: Any] = [:]
+            var runtimeStats: [String: Any] = [:]
+
             // Gather health monitor state
             if let monitor = adapter.healthMonitor {
                 group.enter()
                 monitor.getStateSnapshot { snapshot in
-                    for (key, value) in snapshot {
-                        state[key] = value
-                    }
+                    monitorSnapshot = snapshot
                     group.leave()
                 }
             }
@@ -216,18 +220,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             adapter.getRuntimeConfiguration { configString in
                 if let configString = configString {
                     let (tx, rx) = ConnectionHealthMonitor.parseTxRxBytes(from: configString)
-                    state["txBytes"] = tx
-                    state["rxBytes"] = rx
+                    runtimeStats["txBytes"] = tx
+                    runtimeStats["rxBytes"] = rx
                     let handshakeAge = ConnectionHealthMonitor.parseLastHandshakeAge(from: configString)
                     if handshakeAge != .infinity {
-                        state["lastHandshakeTime"] = Date().timeIntervalSince1970 - handshakeAge
+                        runtimeStats["lastHandshakeTime"] = Date().timeIntervalSince1970 - handshakeAge
                     }
                 }
                 group.leave()
             }
 
             group.notify(queue: .main) {
-                completionHandler(try? JSONSerialization.data(withJSONObject: state))
+                var merged = state
+                for (key, value) in monitorSnapshot {
+                    merged[key] = value
+                }
+                for (key, value) in runtimeStats {
+                    merged[key] = value
+                }
+                completionHandler(try? JSONSerialization.data(withJSONObject: merged))
             }
 
         #if FAILOVER_TESTING
@@ -350,14 +361,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             let now = Date()
             let (currentTx, currentRx) = ConnectionHealthMonitor.parseTxRxBytes(from: configString)
 
-            // Compute rates
+            // Compute rates. Counters reset to zero when the Go device or its
+            // peers are replaced (failover config swap, iOS offline/online,
+            // probe promotion) — treat a regression as counting from zero so
+            // the unsigned subtraction can't trap.
             var txRate: Double = 0
             var rxRate: Double = 0
             if let prevTime = self.previousStatsTime {
                 let elapsed = now.timeIntervalSince(prevTime)
                 if elapsed > 0 {
-                    txRate = Double(currentTx - self.previousStatsTxBytes) / elapsed
-                    rxRate = Double(currentRx - self.previousStatsRxBytes) / elapsed
+                    let txDelta = currentTx >= self.previousStatsTxBytes ? currentTx - self.previousStatsTxBytes : currentTx
+                    let rxDelta = currentRx >= self.previousStatsRxBytes ? currentRx - self.previousStatsRxBytes : currentRx
+                    txRate = Double(txDelta) / elapsed
+                    rxRate = Double(rxDelta) / elapsed
                 }
             }
 
