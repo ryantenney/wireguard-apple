@@ -66,7 +66,22 @@ public class WireGuardAdapter {
     private var state: State = .stopped
 
     /// Connection health monitor for failover between tunnel configurations.
-    public var healthMonitor: ConnectionHealthMonitor?
+    /// Written by the packet tunnel provider (start/stop) and read on the
+    /// adapter's queue and IPC paths, so access is lock-protected.
+    public var healthMonitor: ConnectionHealthMonitor? {
+        get {
+            healthMonitorLock.lock()
+            defer { healthMonitorLock.unlock() }
+            return _healthMonitor
+        }
+        set {
+            healthMonitorLock.lock()
+            defer { healthMonitorLock.unlock() }
+            _healthMonitor = newValue
+        }
+    }
+    private var _healthMonitor: ConnectionHealthMonitor?
+    private let healthMonitorLock = NSLock()
 
     /// Stored OUTER settings generator for TiT restart after iOS offline/online transitions.
     private var titOuterSettingsGenerator: PacketTunnelSettingsGenerator?

@@ -361,7 +361,7 @@ To enable manually, add `FAILOVER_TESTING` to `SWIFT_ACTIVE_COMPILATION_CONDITIO
 
 | Scenario | Behavior |
 |----------|----------|
-| All configs unhealthy | Cycles through all, anti-flap kicks in after 3 cycles, 5-minute cooldown |
+| All configs unhealthy | Cycles through all, anti-flap kicks in after 3 consecutive switches, 5-minute cooldown |
 | Rapid cycling | 60-second minimum hold time prevents ping-ponging |
 | Network goes offline entirely | `NWPathMonitor` triggers `temporaryShutdown` (existing iOS behavior). Health monitor can't poll. Resumes on recovery. |
 | App killed while on fallback | Extension keeps running. App queries state via IPC when reopened. |

@@ -81,16 +81,21 @@ public class ConnectionHealthMonitor {
     /// Timer for periodic failback probing.
     private var failbackTimer: DispatchSourceTimer?
 
-    /// When the last config switch occurred (anti-flap).
-    private var lastSwitchTime: Date = .distantPast
+    /// When the last config switch occurred (anti-flap). Monotonic
+    /// (mach_absolute_time-based), so wall-clock steps (NTP, user changes)
+    /// can't fake or freeze the hold-time/cooldown intervals; it pauses during
+    /// system sleep, so sleep never counts toward them either. nil = never.
+    private var lastSwitchTime: DispatchTime?
 
     /// Minimum time to stay on a config before switching again.
     private let minimumHoldTime: TimeInterval = 60
 
-    /// How many full cycles through all configs without stability.
+    /// Consecutive config *switches* without an intervening healthy period.
+    /// (Note: switches, not full rotations through the config list — with
+    /// more than 2 configs the cooldown engages before a full cycle.)
     private var consecutiveCycles: Int = 0
 
-    /// After this many cycles, enter cooldown.
+    /// After this many consecutive switches, enter cooldown.
     private let maxCyclesBeforeCooldown: Int = 3
 
     /// Cooldown duration after too many cycles.
@@ -110,8 +115,13 @@ public class ConnectionHealthMonitor {
     /// Total rx_bytes from the last health check poll.
     private var lastRxBytes: UInt64 = 0
 
-    /// When we first noticed tx increasing without rx. `nil` when healthy or idle.
-    private var txWithoutRxSince: Date?
+    /// When we first noticed tx increasing without rx. `nil` when healthy or
+    /// idle. Monotonic (see lastSwitchTime): a sleep period can't inflate the
+    /// tx-without-rx duration into a spurious failover on wake.
+    private var txWithoutRxSince: DispatchTime?
+
+    /// Whether the current unhealthy episode has been reported to the delegate.
+    private var unhealthyReported: Bool = false
 
     // MARK: - Background Probe State
 
@@ -273,6 +283,7 @@ public class ConnectionHealthMonitor {
         // a fresh baseline, and any tx-without-rx observation predates the reset.
         if isFirstPoll || countersReset {
             txWithoutRxSince = nil
+            unhealthyReported = false
             return
         }
 
@@ -281,6 +292,7 @@ public class ConnectionHealthMonitor {
             if txWithoutRxSince != nil {
                 logHandler(.verbose, "Failover: rx resumed on config #\(activeIndex), connection healthy")
                 txWithoutRxSince = nil
+                unhealthyReported = false
             }
             if consecutiveCycles > 0 {
                 logHandler(.verbose, "Failover: connection stable on config #\(activeIndex), resetting cycle counter")
@@ -292,27 +304,34 @@ public class ConnectionHealthMonitor {
         if txDelta == 0 {
             // No outgoing traffic — tunnel is idle, not unhealthy
             txWithoutRxSince = nil
+            unhealthyReported = false
             return
         }
 
         // tx is increasing but rx is not — potential problem
         if txWithoutRxSince == nil {
-            txWithoutRxSince = Date()
+            txWithoutRxSince = DispatchTime.now()
             logHandler(.verbose, "Failover: tx without rx detected on config #\(activeIndex) (tx +\(txDelta) bytes)")
             return
         }
 
-        let duration = Date().timeIntervalSince(txWithoutRxSince!)
+        let duration = Self.secondsSince(txWithoutRxSince!)
         guard duration > settings.trafficTimeout else {
             logHandler(.verbose, "Failover: tx without rx for \(Int(duration))s/\(Int(settings.trafficTimeout))s on config #\(activeIndex)")
             return
         }
 
-        // Connection is unhealthy — sending data but receiving nothing
-        delegate?.healthMonitor(self, didDetectUnhealthyConnectionAt: activeIndex, txWithoutRxDuration: duration)
+        // Connection is unhealthy — sending data but receiving nothing.
+        // Report once per unhealthy episode: the poll lands here every cycle
+        // while hold time/cooldown block the switch, and per-poll delegate
+        // events would flood the session history.
+        if !unhealthyReported {
+            unhealthyReported = true
+            delegate?.healthMonitor(self, didDetectUnhealthyConnectionAt: activeIndex, txWithoutRxDuration: duration)
+        }
 
         // Anti-flap: check minimum hold time
-        let timeSinceLastSwitch = Date().timeIntervalSince(lastSwitchTime)
+        let timeSinceLastSwitch = lastSwitchTime.map(Self.secondsSince) ?? .infinity
         guard timeSinceLastSwitch > minimumHoldTime else {
             logHandler(.verbose, "Failover: unhealthy but within hold time (\(Int(timeSinceLastSwitch))s/\(Int(minimumHoldTime))s), waiting")
             return
@@ -338,6 +357,13 @@ public class ConnectionHealthMonitor {
         logHandler(.error, "Failover: tx without rx for \(Int(duration))s (>\(Int(settings.trafficTimeout))s), switching to '\(nextName)'")
 
         switchToConfig(at: nextIndex)
+    }
+
+    /// Seconds elapsed since a monotonic timestamp.
+    private static func secondsSince(_ time: DispatchTime) -> TimeInterval {
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard now > time.uptimeNanoseconds else { return 0 }
+        return TimeInterval(now - time.uptimeNanoseconds) / 1_000_000_000
     }
 
     // MARK: - Config Switching
@@ -378,13 +404,14 @@ public class ConnectionHealthMonitor {
                 } else {
                     let previousIndex = self.activeIndex
                     self.activeIndex = index
-                    self.lastSwitchTime = Date()
+                    self.lastSwitchTime = DispatchTime.now()
                     self.consecutiveCycles += 1
 
                     // Reset traffic tracking for the new config
                     self.lastTxBytes = 0
                     self.lastRxBytes = 0
                     self.txWithoutRxSince = nil
+                    self.unhealthyReported = false
 
                     let name = config.name ?? "config #\(index)"
                     self.logHandler(.verbose, "Failover: switched from config #\(previousIndex) to '\(name)' (cycle \(self.consecutiveCycles))")
@@ -509,11 +536,12 @@ public class ConnectionHealthMonitor {
                                             return
                                         }
                                         self.activeIndex = 0
-                                        self.lastSwitchTime = Date()
+                                        self.lastSwitchTime = DispatchTime.now()
                                         self.consecutiveCycles = 0
                                         self.lastTxBytes = 0
                                         self.lastRxBytes = 0
                                         self.txWithoutRxSince = nil
+                                        self.unhealthyReported = false
                                         self.isProbing = false
                                         self.delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
                                         self.startHotSpareIfNeeded()
@@ -521,11 +549,12 @@ public class ConnectionHealthMonitor {
                                 }
                             } else {
                                 self.activeIndex = 0
-                                self.lastSwitchTime = Date()
+                                self.lastSwitchTime = DispatchTime.now()
                                 self.consecutiveCycles = 0
                                 self.lastTxBytes = 0
                                 self.lastRxBytes = 0
                                 self.txWithoutRxSince = nil
+                                self.unhealthyReported = false
                                 self.isProbing = false
                                 self.delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
                                 self.startHotSpareIfNeeded()
@@ -601,11 +630,12 @@ public class ConnectionHealthMonitor {
                     let name = self.configurations[0].name ?? "config #0"
                     self.logHandler(.verbose, "Failover: primary '\(name)' recovered (handshake \(Int(handshakeAge))s ago). Staying on primary.")
                     self.activeIndex = 0
-                    self.lastSwitchTime = Date()
+                    self.lastSwitchTime = DispatchTime.now()
                     self.consecutiveCycles = 0
                     self.lastTxBytes = 0
                     self.lastRxBytes = 0
                     self.txWithoutRxSince = nil
+                    self.unhealthyReported = false
                     self.isProbing = false
                     self.delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
                     self.startHotSpareIfNeeded()
@@ -626,6 +656,7 @@ public class ConnectionHealthMonitor {
                             self.lastTxBytes = 0
                             self.lastRxBytes = 0
                             self.txWithoutRxSince = nil
+                            self.unhealthyReported = false
                             self.isProbing = false
                         }
                     }
@@ -690,9 +721,19 @@ public class ConnectionHealthMonitor {
         }
     }
 
+    /// A WireGuard session is rejected by the protocol after 180s without a
+    /// re-handshake (REJECT_AFTER_TIME); a spare whose last handshake is older
+    /// has no usable session and a promotion would be a blind switch that then
+    /// burns the minimum hold time before the monitor can move on.
+    private static let hotSpareMaxHandshakeAge: TimeInterval = 180
+
     /// Promote the hot spare to become the active tunnel, preserving its WireGuard session.
     /// Called from evaluateHealth when the active connection is detected as unhealthy.
-    /// Returns true if we initiated hot spare promotion (caller should not also switchToConfig).
+    /// Returns true if the monitor has taken responsibility for this failover
+    /// (caller must not also switchToConfig): asynchronously, the spare's
+    /// session is verified and either promoted or — if it never handshook,
+    /// e.g. the fallback endpoint is also down — stopped in favor of a
+    /// regular config swap to the same target.
     private func tryHotSpareFailover() -> Bool {
         guard settings.hotSpare, let adapter = adapter,
               let handle = hotSpareHandle, let targetIndex = hotSpareConfigIndex,
@@ -703,13 +744,35 @@ public class ConnectionHealthMonitor {
             return false
         }
 
-        logHandler(.verbose, "Failover: promoting hot spare for index \(targetIndex) — session preserved, no re-handshake")
-
-        // Clear hot spare state so stopHotSpare doesn't kill it during promotion
+        // Take ownership of the spare so stopHotSpare can't kill it mid-promotion
         let config = configurations[targetIndex]
         hotSpareHandle = nil
         hotSpareConfigIndex = nil
 
+        adapter.getProbeRuntimeConfiguration(handle: handle) { [weak self] (configString: String?) in
+            guard let self = self else { return }
+            self.workQueue.async {
+                let handshakeAge = configString.map { Self.parseLastHandshakeAge(from: $0) } ?? .infinity
+                guard handshakeAge < Self.hotSpareMaxHandshakeAge else {
+                    let name = config.name ?? "config #\(targetIndex)"
+                    self.logHandler(.error, "Failover: hot spare for '\(name)' has no live session (handshake \(handshakeAge == .infinity ? "never" : "\(Int(handshakeAge))s ago")), using regular config swap")
+                    self.adapter?.stopProbe(handle: handle)
+                    self.switchToConfig(at: targetIndex)
+                    return
+                }
+
+                self.logHandler(.verbose, "Failover: promoting hot spare for index \(targetIndex) (handshake \(Int(handshakeAge))s ago) — session preserved, no re-handshake")
+                self.promoteHotSpare(handle: handle, config: config, targetIndex: targetIndex)
+            }
+        }
+
+        return true
+    }
+
+    /// Second stage of tryHotSpareFailover: swap the probe's null tun for the
+    /// real utun inside the running device.
+    private func promoteHotSpare(handle: Int32, config: TunnelConfiguration, targetIndex: Int) {
+        guard let adapter = adapter else { return }
         // Promote: swaps null tun → real utun inside the probe device
         let siblings = siblingEndpoints(forActiveIndex: targetIndex)
         adapter.promoteProbe(probeHandle: handle, tunnelConfiguration: config, excludedEndpoints: siblings) { [weak self] (error: Error?) in
@@ -723,12 +786,13 @@ public class ConnectionHealthMonitor {
                 } else {
                     let previousIndex = self.activeIndex
                     self.activeIndex = targetIndex
-                    self.lastSwitchTime = Date()
+                    self.lastSwitchTime = DispatchTime.now()
                     self.consecutiveCycles += 1
 
                     self.lastTxBytes = 0
                     self.lastRxBytes = 0
                     self.txWithoutRxSince = nil
+                    self.unhealthyReported = false
 
                     let name = config.name ?? "config #\(targetIndex)"
                     self.logHandler(.verbose, "Failover: hot spare promoted from #\(previousIndex) to '\(name)' (cycle \(self.consecutiveCycles))")
@@ -739,8 +803,6 @@ public class ConnectionHealthMonitor {
                 }
             }
         }
-
-        return true
     }
 
     // MARK: - State Snapshot
@@ -759,11 +821,11 @@ public class ConnectionHealthMonitor {
             if self.failbackProbeHandle != nil {
                 state["backgroundProbeActive"] = true
             }
-            if self.lastSwitchTime != .distantPast {
-                state["lastSwitchTime"] = self.lastSwitchTime.timeIntervalSince1970
+            if let lastSwitchTime = self.lastSwitchTime {
+                state["lastSwitchTime"] = Date().timeIntervalSince1970 - Self.secondsSince(lastSwitchTime)
             }
             if let txWithoutRxSince = self.txWithoutRxSince {
-                state["txWithoutRxSince"] = txWithoutRxSince.timeIntervalSince1970
+                state["txWithoutRxSince"] = Date().timeIntervalSince1970 - Self.secondsSince(txWithoutRxSince)
             }
 
             // If hot spare is running, query its probe for handshake status
