@@ -450,6 +450,13 @@ public class WireGuardAdapter {
     /// It performs a full Noise IK handshake without routing any user traffic.
     public func startProbe(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (Int32?, Error?) -> Void) {
         workQueue.async {
+            // Don't start probe devices unless the tunnel is actually running —
+            // e.g. during iOS temporaryShutdown a probe would just burn battery
+            // and leak past the offline stopAllProbes() sweep.
+            guard case .started = self.state else {
+                completionHandler(nil, WireGuardAdapterError.invalidState)
+                return
+            }
             do {
                 let settingsGenerator = try self.makeSettingsGenerator(with: tunnelConfiguration)
                 let (wgConfig, resolutionResults) = settingsGenerator.uapiConfiguration()
@@ -519,11 +526,15 @@ public class WireGuardAdapter {
             self.excludedEndpoints = excludedEndpoints
             // Must have a running tunnel to promote into
             guard case .started(let oldHandle, _) = self.state else {
+                // The caller has already disowned the probe handle; without a
+                // tunnel to promote into the probe device would orphan and keep
+                // handshaking forever — stop it here.
+                if self.probeHandles.removeValue(forKey: probeHandle) != nil {
+                    wgProbeOff(probeHandle)
+                }
                 if case .startedTiT = self.state {
                     // TiT promotion not supported yet
                     self.logHandler(.error, "Probe promote: not supported for TiT tunnels")
-                    completionHandler(WireGuardAdapterError.invalidState)
-                    return
                 }
                 completionHandler(WireGuardAdapterError.invalidState)
                 return
@@ -566,6 +577,13 @@ public class WireGuardAdapter {
             } catch let error as WireGuardAdapterError {
                 // Probe is gone from probeHandles but promote failed — clean it up
                 wgProbeOff(probeHandle)
+                // The new config's network settings were applied before the
+                // failure, but the old device is still the one running. Restore
+                // its settings so routes/DNS match reality; if this also fails,
+                // the caller's fallback adapter.update() will reapply settings.
+                if case .started(_, let oldSettingsGenerator) = self.state {
+                    try? self.setNetworkSettings(oldSettingsGenerator.generateNetworkSettings())
+                }
                 completionHandler(error)
             } catch {
                 fatalError()
@@ -765,6 +783,9 @@ public class WireGuardAdapter {
                 wgTurnOff(handle)
                 // Stop all probes when going offline — they'll be restarted by the health monitor
                 self.stopAllProbes()
+                // The monitor must drop its stale probe handles: Go recycles
+                // handle IDs, so a kept handle could later alias a new probe.
+                self.healthMonitor?.probesWereStopped()
             }
 
         case .temporaryShutdown(let settingsGenerator):

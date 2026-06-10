@@ -25,6 +25,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -255,6 +256,7 @@ type swappableTunDevice struct {
 	inner  atomic.Value // always stores tunHolder
 	events chan tun.Event
 	closed chan struct{}
+	fwdWG  sync.WaitGroup // tracks the event-forwarding goroutine started by swap
 }
 
 func newSwappableTunDevice(inner tun.Device) *swappableTunDevice {
@@ -321,7 +323,12 @@ func (s *swappableTunDevice) Close() error {
 	default:
 		close(s.closed)
 	}
-	return s.getInner().Close()
+	err := s.getInner().Close()
+	// The device's event reader goroutine exits only when the events channel
+	// closes; wait out the forwarder (if any) so nothing sends after the close.
+	s.fwdWG.Wait()
+	close(s.events)
+	return err
 }
 
 // swap replaces the inner tun device atomically. Closes the old inner (which
@@ -330,18 +337,50 @@ func (s *swappableTunDevice) Close() error {
 func (s *swappableTunDevice) swap(newInner tun.Device) {
 	old := s.inner.Swap(tunHolder{dev: newInner}).(tunHolder).dev
 	old.Close() // Unblocks any Read() call stuck on the old (null) tun
+
+	// Forward the new inner's events (MTU updates, up/down) to the device.
+	// Without a reader, a NativeTun's route listener fills its 10-slot event
+	// channel and blocks forever, and the device never sees MTU changes.
+	s.fwdWG.Add(1)
+	go func() {
+		defer s.fwdWG.Done()
+		for {
+			select {
+			case ev, ok := <-newInner.Events():
+				if !ok {
+					return
+				}
+				select {
+				case s.events <- ev:
+				case <-s.closed:
+					return
+				}
+			case <-s.closed:
+				return
+			}
+		}
+	}()
+
+	// Nudge the device to re-read the MTU: it snapshotted the null tun's
+	// placeholder MTU at NewDevice time, while the real utun may differ.
+	select {
+	case s.events <- tun.EventMTUUpdate:
+	default:
+	}
 }
 
 // nullTunDevice implements tun.Device by discarding all writes and blocking
 // reads until closed. Used as the initial inner device for probes.
 type nullTunDevice struct {
 	closed chan struct{}
+	events chan tun.Event
 	mtu    int
 }
 
 func newNullTunDevice(mtu int) *nullTunDevice {
 	return &nullTunDevice{
 		closed: make(chan struct{}),
+		events: make(chan tun.Event),
 		mtu:    mtu,
 	}
 }
@@ -350,7 +389,7 @@ func (t *nullTunDevice) File() *os.File            { return nil }
 func (t *nullTunDevice) Flush() error              { return nil }
 func (t *nullTunDevice) MTU() (int, error)         { return t.mtu, nil }
 func (t *nullTunDevice) Name() (string, error)     { return "probe0", nil }
-func (t *nullTunDevice) Events() <-chan tun.Event   { return make(chan tun.Event) }
+func (t *nullTunDevice) Events() <-chan tun.Event   { return t.events }
 
 func (t *nullTunDevice) Read(data []byte, offset int) (int, error) {
 	// Block until closed — no packets to deliver from a null tun.
@@ -601,9 +640,10 @@ type pipedTunnel struct {
 // ---- PipedTun: tun.Device implementation for OUTER ----
 
 type pipedTunDevice struct {
-	pt     *pipedTunnel
-	events chan tun.Event
-	mtu    int
+	pt         *pipedTunnel
+	events     chan tun.Event
+	eventsOnce sync.Once // events channel may be closed via Close from several paths
+	mtu        int
 }
 
 func (t *pipedTunDevice) File() *os.File { return nil }
@@ -641,6 +681,9 @@ func (t *pipedTunDevice) Close() error {
 	default:
 		close(t.pt.closed)
 	}
+	// The device's event reader goroutine exits only when the events channel
+	// closes; nothing sends on it after construction, so this is safe.
+	t.eventsOnce.Do(func() { close(t.events) })
 	return nil
 }
 
@@ -786,11 +829,16 @@ func titWrapIPv6UDP(payload []byte, src, dst [16]byte, srcPort, dstPort uint16) 
 	binary.BigEndian.PutUint16(pkt[40:], srcPort)
 	binary.BigEndian.PutUint16(pkt[42:], dstPort)
 	binary.BigEndian.PutUint16(pkt[44:], uint16(udpLen))
-	// UDP checksum: compute pseudo-header checksum for IPv6 (required)
-	cksum := titIPv6UDPChecksum(src, dst, pkt[40:40+udpLen], uint32(udpLen))
-	binary.BigEndian.PutUint16(pkt[46:], cksum)
 
+	// The payload must be in place before the checksum is computed — the
+	// mandatory IPv6 UDP checksum covers the entire UDP segment.
 	copy(pkt[48:], payload)
+	cksum := titIPv6UDPChecksum(src, dst, pkt[40:40+udpLen], uint32(udpLen))
+	if cksum == 0 {
+		// RFC 768/8200: a computed checksum of zero is transmitted as all ones.
+		cksum = 0xffff
+	}
+	binary.BigEndian.PutUint16(pkt[46:], cksum)
 	return pkt
 }
 

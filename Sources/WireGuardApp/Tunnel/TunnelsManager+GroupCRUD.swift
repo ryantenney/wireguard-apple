@@ -145,6 +145,16 @@ extension TunnelsManager {
             return
         }
 
+        // Group names share a namespace with tunnel names: config sync and
+        // delete protection are name-based, and zip re-imports would otherwise
+        // create duplicate groups on every import.
+        guard !tunnels.contains(where: { $0.name == spec.name })
+                && !failoverGroupTunnels.contains(where: { $0.name == spec.name })
+                && !titGroupTunnels.contains(where: { $0.name == spec.name }) else {
+            completionHandler(.failure(TunnelsManagerError.tunnelAlreadyExistsWithThatName))
+            return
+        }
+
         guard let passwordRef = spec.passwordReference(from: self) else {
             wg_log(.error, message: "\(spec.groupKind.displayName): source tunnel has no valid keychain reference")
             completionHandler(.failure(TunnelsManagerError.tunnelNameEmpty))
@@ -232,6 +242,20 @@ extension TunnelsManager {
         let oldName = tunnelProviderManager.localizedDescription ?? ""
         let isNameChanged = spec.name != oldName
 
+        // Validate everything that can fail before mutating any state: bailing
+        // out after the rename below would leave the in-memory container
+        // diverged from preferences while reporting success to the UI.
+        guard let proto = tunnelProviderManager.protocolConfiguration as? NETunnelProviderProtocol else {
+            completionHandler(TunnelsManagerError.groupConfigurationInvalid(groupName: spec.name))
+            return
+        }
+
+        let existingConfig = proto.providerConfiguration
+        guard let providerConfig = spec.buildProviderConfiguration(tunnelsManager: self, existing: existingConfig) else {
+            completionHandler(TunnelsManagerError.groupConfigurationInvalid(groupName: spec.name))
+            return
+        }
+
         if isNameChanged {
             guard !tunnels.contains(where: { $0.name == spec.name })
                     && !failoverGroupTunnels.contains(where: { $0.name == spec.name })
@@ -245,19 +269,9 @@ extension TunnelsManager {
 
         // Update passwordReference from spec
         if let passwordRef = spec.passwordReference(from: self) {
-            (tunnelProviderManager.protocolConfiguration as? NETunnelProviderProtocol)?.passwordReference = passwordRef
+            proto.passwordReference = passwordRef
         }
 
-        guard let proto = tunnelProviderManager.protocolConfiguration as? NETunnelProviderProtocol else {
-            completionHandler(nil)
-            return
-        }
-
-        let existingConfig = proto.providerConfiguration
-        guard let providerConfig = spec.buildProviderConfiguration(tunnelsManager: self, existing: existingConfig) else {
-            completionHandler(nil)
-            return
-        }
         proto.providerConfiguration = providerConfig
 
         let isActivatingOnDemand = !tunnelProviderManager.isOnDemandEnabled && spec.onDemandActivation.isEnabled

@@ -111,4 +111,18 @@ struct TunnelInTunnelGroupConfig {
         output += "InnerTunnel = \(group.innerTunnelName)\n"
         return output
     }
+
+    /// Serialize a tunnel-in-tunnel group from a NETunnelProviderManager's
+    /// providerConfiguration — the authoritative store for UI-created groups.
+    static func configString(from providerConfiguration: [String: Any]) -> String? {
+        guard let outerName = providerConfiguration[TunnelInTunnelConfigKeys.outerName] as? String,
+              let innerName = providerConfiguration[TunnelInTunnelConfigKeys.innerName] as? String,
+              !outerName.isEmpty, !innerName.isEmpty else {
+            return nil
+        }
+        var output = "[TunnelInTunnel]\n"
+        output += "OuterTunnel = \(outerName)\n"
+        output += "InnerTunnel = \(innerName)\n"
+        return output
+    }
 }

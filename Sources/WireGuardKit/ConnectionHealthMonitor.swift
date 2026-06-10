@@ -187,11 +187,32 @@ public class ConnectionHealthMonitor {
     /// and the network just came back online, this is a good time to probe the primary.
     public func networkPathDidChange() {
         workQueue.async {
-            guard self.isRunning, self.activeIndex != 0, self.settings.autoFailback else { return }
+            guard self.isRunning else { return }
+
+            // Restart the hot spare if it was force-stopped (iOS offline kills
+            // all probe devices via stopAllProbes). The adapter rejects probe
+            // starts while it isn't running, so this is safe to attempt on
+            // every path change.
+            self.startHotSpareIfNeeded()
+
+            guard self.activeIndex != 0, self.settings.autoFailback else { return }
             self.logHandler(.verbose, "Failover: network change detected while on fallback, scheduling immediate probe")
             self.workQueue.asyncAfter(deadline: .now() + 5) { [weak self] in
                 self?.probeFailback()
             }
+        }
+    }
+
+    /// Called by the adapter after it force-stops all probe devices (e.g. when
+    /// iOS goes offline). The Go side recycles handle IDs, so holding on to the
+    /// stale handles could later alias a different probe — clear them so the
+    /// failback/hot-spare machinery can start fresh probes when back online.
+    public func probesWereStopped() {
+        workQueue.async {
+            self.failbackProbeHandle = nil
+            self.hotSpareHandle = nil
+            self.hotSpareConfigIndex = nil
+            self.isProbing = false
         }
     }
 
@@ -211,7 +232,7 @@ public class ConnectionHealthMonitor {
     }
 
     private func checkHealth() {
-        guard isRunning, let adapter = adapter else { return }
+        guard isRunning, !isProbing, let adapter = adapter else { return }
 
         adapter.getRuntimeConfiguration { [weak self] (configString: String?) in
             guard let self = self, let configString = configString else { return }
@@ -222,6 +243,15 @@ public class ConnectionHealthMonitor {
     }
 
     private func evaluateHealth(runtimeConfig: String) {
+        // During a legacy failback probe the active device has been temporarily
+        // swapped to the primary; evaluating health in that window would race
+        // the probe's own config switches and operate on the wrong baseline.
+        // (Re-checked here because isProbing can change between checkHealth's
+        // async config fetch and this evaluation.)
+        if isProbing {
+            return
+        }
+
         let (currentTx, currentRx) = Self.parseTxRxBytes(from: runtimeConfig)
 
         // Counters reset to zero whenever the Go device or its peers are
@@ -413,6 +443,14 @@ public class ConnectionHealthMonitor {
                     return
                 }
 
+                // The monitor may have been stopped while the probe was starting;
+                // nobody would ever stop a probe stored after that point.
+                guard self.isRunning else {
+                    self.adapter?.stopProbe(handle: handle)
+                    self.isProbing = false
+                    return
+                }
+
                 self.failbackProbeHandle = handle
                 // Wait for handshake to complete
                 let probeWait: TimeInterval = min(15, self.settings.trafficTimeout)
@@ -457,9 +495,19 @@ public class ConnectionHealthMonitor {
                             if let error = error {
                                 self.logHandler(.error, "Failover: failback probe promotion failed: \(error), falling back to config swap")
                                 // Fall back to a regular config swap
-                                adapter.update(tunnelConfiguration: self.configurations[0], excludedEndpoints: self.siblingEndpoints(forActiveIndex: 0)) { [weak self] (_: Error?) in
+                                adapter.update(tunnelConfiguration: self.configurations[0], excludedEndpoints: self.siblingEndpoints(forActiveIndex: 0)) { [weak self] (updateError: Error?) in
                                     guard let self = self else { return }
                                     self.workQueue.async {
+                                        if let updateError = updateError {
+                                            // The swap to primary also failed — the adapter is still
+                                            // running the fallback config. Recording activeIndex = 0
+                                            // here would disable failback probing forever and make
+                                            // the UI report the wrong config. Stay put and let the
+                                            // next failback timer tick retry.
+                                            self.logHandler(.error, "Failover: fallback config swap to primary also failed: \(updateError.localizedDescription), staying on config #\(self.activeIndex)")
+                                            self.isProbing = false
+                                            return
+                                        }
                                         self.activeIndex = 0
                                         self.lastSwitchTime = Date()
                                         self.consecutiveCycles = 0
@@ -538,8 +586,11 @@ public class ConnectionHealthMonitor {
         }
 
         adapter.getRuntimeConfiguration { [weak self] (configString: String?) in
-            guard let self = self, let configString = configString else {
-                self?.isProbing = false
+            guard let self = self else { return }
+            guard let configString = configString else {
+                // isProbing is confined to workQueue — don't write it from the
+                // adapter's callback context.
+                self.workQueue.async { self.isProbing = false }
                 return
             }
             self.workQueue.async {
@@ -562,9 +613,16 @@ public class ConnectionHealthMonitor {
                     // Primary still unhealthy — revert
                     let fallbackName = self.configurations[savedFallbackIndex].name ?? "config #\(savedFallbackIndex)"
                     self.logHandler(.verbose, "Failover: primary still unhealthy (\(Int(handshakeAge))s), reverting to '\(fallbackName)'")
-                    adapter.update(tunnelConfiguration: self.configurations[savedFallbackIndex], excludedEndpoints: self.siblingEndpoints(forActiveIndex: savedFallbackIndex)) { [weak self] (_: Error?) in
+                    adapter.update(tunnelConfiguration: self.configurations[savedFallbackIndex], excludedEndpoints: self.siblingEndpoints(forActiveIndex: savedFallbackIndex)) { [weak self] (updateError: Error?) in
                         guard let self = self else { return }
                         self.workQueue.async {
+                            if let updateError = updateError {
+                                // The revert failed — the adapter is still running the
+                                // primary config from the probe swap. Record that honestly
+                                // so health checks operate on the real state.
+                                self.logHandler(.error, "Failover: revert to '\(fallbackName)' failed: \(updateError.localizedDescription), still on primary")
+                                self.activeIndex = 0
+                            }
                             self.lastTxBytes = 0
                             self.lastRxBytes = 0
                             self.txWithoutRxSince = nil
@@ -607,6 +665,12 @@ public class ConnectionHealthMonitor {
             guard let self = self else { return }
             self.workQueue.async {
                 if let handle = handle {
+                    // The monitor may have been stopped while the probe was
+                    // starting; nobody would ever stop a probe stored after that.
+                    guard self.isRunning else {
+                        self.adapter?.stopProbe(handle: handle)
+                        return
+                    }
                     self.hotSpareHandle = handle
                     self.hotSpareConfigIndex = targetIndex
                     self.logHandler(.verbose, "Failover: hot spare started for index \(targetIndex) (handle \(handle))")
@@ -631,7 +695,11 @@ public class ConnectionHealthMonitor {
     /// Returns true if we initiated hot spare promotion (caller should not also switchToConfig).
     private func tryHotSpareFailover() -> Bool {
         guard settings.hotSpare, let adapter = adapter,
-              let handle = hotSpareHandle, let targetIndex = hotSpareConfigIndex else {
+              let handle = hotSpareHandle, let targetIndex = hotSpareConfigIndex,
+              // A failover/failback that landed while the spare was starting can
+              // leave it targeting the now-active config — promoting it would
+              // "fail over" to the config we're already on.
+              targetIndex != activeIndex else {
             return false
         }
 

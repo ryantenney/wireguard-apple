@@ -74,7 +74,7 @@ class TunnelImporter {
             tunnelsManager.addMultiple(tunnelConfigurations: configs.compactMap { $0 }) { numberSuccessful, lastAddError in
                 // After tunnels are imported, import failover groups, then tunnel-in-tunnel groups
                 importFailoverGroups(failoverGroups, into: tunnelsManager) { groupsImported in
-                    importTunnelInTunnelGroups(tunnelInTunnelGroups) { titGroupsImported in
+                    importTunnelInTunnelGroups(tunnelInTunnelGroups, into: tunnelsManager) { titGroupsImported in
                         let allGroupsOK = (failoverGroups.isEmpty || groupsImported == failoverGroups.count)
                             && (tunnelInTunnelGroups.isEmpty || titGroupsImported == tunnelInTunnelGroups.count)
                         if !configs.isEmpty && numberSuccessful == configs.count && allGroupsOK {
@@ -111,22 +111,32 @@ class TunnelImporter {
         }
     }
 
-    private static func importTunnelInTunnelGroups(_ groups: [TunnelInTunnelGroupConfig], completionHandler: @escaping (Int) -> Void) {
+    private static func importTunnelInTunnelGroups(_ groups: [TunnelInTunnelGroupConfig], into tunnelsManager: TunnelsManager, completionHandler: @escaping (Int) -> Void) {
         guard !groups.isEmpty else {
             completionHandler(0)
             return
         }
         var successCount = 0
+        var remaining = groups.count
         for group in groups {
-            let tunnelInTunnelGroup = TunnelInTunnelGroup(
+            tunnelsManager.addTiTGroup(
                 name: group.name,
                 outerTunnelName: group.outerTunnelName,
-                innerTunnelName: group.innerTunnelName
-            )
-            titGroupPersistence.addGroup(tunnelInTunnelGroup)
-            successCount += 1
+                innerTunnelName: group.innerTunnelName,
+                onDemandActivation: OnDemandActivation()
+            ) { result in
+                switch result {
+                case .success:
+                    successCount += 1
+                case .failure(let error):
+                    wg_log(.error, message: "Failed to import tunnel-in-tunnel group '\(group.name)': \(error)")
+                }
+                remaining -= 1
+                if remaining == 0 {
+                    completionHandler(successCount)
+                }
+            }
         }
-        completionHandler(successCount)
     }
 
     private static func importFailoverGroups(_ groups: [FailoverGroupConfig], into tunnelsManager: TunnelsManager, completionHandler: @escaping (Int) -> Void) {

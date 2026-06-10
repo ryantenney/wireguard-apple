@@ -322,9 +322,17 @@ class TunnelsListTableViewController: NSViewController {
                     }
                 }
 
-                // Gather tunnel-in-tunnel group configs for export
-                let tunnelInTunnelGroups = titGroupPersistence.loadGroups().map {
-                    (name: $0.name, config: TunnelInTunnelGroupConfig.configString(from: $0))
+                // Gather tunnel-in-tunnel group configs for export. UI-created groups
+                // live in NETunnelProviderManager providerConfiguration (not the
+                // legacy tit-groups.json sidecar), so read them from the manager.
+                var tunnelInTunnelGroups = [(name: String, config: String)]()
+                for index in 0 ..< tunnelsManager.numberOfTiTGroups() {
+                    let groupTunnel = tunnelsManager.titGroup(at: index)
+                    if let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
+                       let providerConfig = proto.providerConfiguration,
+                       let configString = TunnelInTunnelGroupConfig.configString(from: providerConfig) {
+                        tunnelInTunnelGroups.append((name: groupTunnel.name, config: configString))
+                    }
                 }
 
                 ZipExporter.exportConfigFiles(tunnelConfigurations: tunnelConfigurations, failoverGroups: failoverGroups, tunnelInTunnelGroups: tunnelInTunnelGroups, to: destinationURL) { [weak self] error in
