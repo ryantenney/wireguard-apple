@@ -313,16 +313,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         // Begin a session history record sharing the same start timestamp.
-        let activationReason: ActivationReason = startupOptionsWasNil ? .onDemand : .manual
-        let session = SessionRecord(
-            tunnelName: resolveDisplayName(),
-            startedAt: tunnelConnectedSince!,
-            activationReason: activationReason,
-            initialActiveConfigName: initialActiveConfig
-        )
-        sessionQueue.sync {
-            self.currentSession = session
-            SessionHistoryStore.saveCurrent(session)
+        // All downstream writers (stats poll, failover events, finalize) no-op
+        // when currentSession is nil, so the user's off switch gates here.
+        if SessionHistoryStore.isRecordingEnabled {
+            let activationReason: ActivationReason = startupOptionsWasNil ? .onDemand : .manual
+            let session = SessionRecord(
+                tunnelName: resolveDisplayName(),
+                startedAt: tunnelConnectedSince!,
+                activationReason: activationReason,
+                initialActiveConfigName: initialActiveConfig
+            )
+            sessionQueue.sync {
+                self.currentSession = session
+                SessionHistoryStore.saveCurrent(session)
+            }
         }
 
         // Write initial traffic data immediately so the widget sees it right away

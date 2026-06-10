@@ -15,10 +15,35 @@ enum SessionHistoryStore {
     static let maxRecords = 500
     private static let historyFileName = "session-history.json"
     private static let currentFileName = "current-session.json"
+    private static let keyRecordingEnabled = "sessionHistoryRecordingEnabled"
 
     private static var sharedFolderURL: URL? {
         guard let appGroupId = FileManager.appGroupId else { return nil }
         return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId)
+    }
+
+    private static var userDefaults: UserDefaults? {
+        guard let appGroupId = FileManager.appGroupId else { return nil }
+        return UserDefaults(suiteName: appGroupId)
+    }
+
+    /// Whether the extension records session history. The history is a
+    /// timestamped log of the user's VPN usage, so it must be possible to
+    /// turn off. Defaults to enabled.
+    static var isRecordingEnabled: Bool {
+        get { (userDefaults?.object(forKey: keyRecordingEnabled) as? Bool) ?? true }
+        set { userDefaults?.set(newValue, forKey: keyRecordingEnabled) }
+    }
+
+    /// History files contain VPN usage metadata; on iOS, keep them encrypted
+    /// at rest until first unlock (the extension writes while the device is
+    /// locked, so stronger classes would break recording).
+    private static var writingOptions: Data.WritingOptions {
+        #if os(iOS)
+        return [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        #else
+        return [.atomic]
+        #endif
     }
 
     private static var historyURL: URL? {
@@ -48,7 +73,7 @@ enum SessionHistoryStore {
         guard let url = currentURL else { return }
         do {
             let data = try makeEncoder().encode(record)
-            try data.write(to: url, options: .atomic)
+            try data.write(to: url, options: writingOptions)
         } catch {
             wg_log(.error, message: "SessionHistory: failed to save current session: \(error)")
         }
@@ -70,7 +95,7 @@ enum SessionHistoryStore {
         }
         do {
             let data = try makeEncoder().encode(records)
-            try data.write(to: url, options: .atomic)
+            try data.write(to: url, options: writingOptions)
         } catch {
             wg_log(.error, message: "SessionHistory: failed to append completed session: \(error)")
         }
@@ -109,7 +134,15 @@ enum SessionHistoryStore {
     /// Safe to call from the app process at launch. Caller is responsible for ensuring no tunnel is
     /// currently connecting/connected when invoked (otherwise we may finalize a still-running session).
     static func recoverOrphanedCurrent() {
-        guard var record = loadCurrent() else { return }
+        guard let url = currentURL, var record = loadCurrent() else { return }
+        // The extension rewrites current-session.json on every stats poll
+        // (~30s). A recently-modified file is owned by a running extension —
+        // e.g. an on-demand activation racing this app launch — so don't
+        // finalize it out from under the writer.
+        if let modified = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date,
+           Date().timeIntervalSince(modified) < 120 {
+            return
+        }
         record.endedAt = Date()
         record.deactivationReason = .endedUnexpectedly
         appendCompleted(record)

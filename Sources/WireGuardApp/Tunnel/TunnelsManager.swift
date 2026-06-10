@@ -825,27 +825,58 @@ class TunnelsManager {
 
     // MARK: - IP Discovery
 
+    /// Guards against stacking concurrent fetches when status flaps
+    /// (reasserting → connected cycles re-trigger discovery).
+    private static var isFetchingPublicIP = false
+
     private func fetchPublicIPIfEnabled() {
         guard IPDiscoverySettings.isEnabled else { return }
+        guard !TunnelsManager.isFetchingPublicIP else { return }
+        TunnelsManager.isFetchingPublicIP = true
 
         // Delay slightly to let the tunnel settle before fetching
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
-            guard let url = URL(string: "https://ipv4.icanhazip.com") else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self = self else {
+                TunnelsManager.isFetchingPublicIP = false
+                return
+            }
+            // The tunnel may have dropped during the delay. Without a tunnel
+            // the request would egress the physical interface, leaking the
+            // user's real IP to the lookup service — and then displaying it
+            // as the "public IP".
+            guard self.tunnelInOperation()?.status == .active else {
+                TunnelsManager.isFetchingPublicIP = false
+                return
+            }
+
+            guard let url = URL(string: "https://ipv4.icanhazip.com") else {
+                TunnelsManager.isFetchingPublicIP = false
+                return
+            }
 
             var request = URLRequest(url: url)
             request.timeoutInterval = 10
             request.cachePolicy = .reloadIgnoringLocalCacheData
 
             let task = URLSession.shared.dataTask(with: request) { data, _, error in
-                if let error = error {
-                    wg_log(.error, message: "IP discovery failed: \(error.localizedDescription)")
-                    return
+                DispatchQueue.main.async { [weak self] in
+                    TunnelsManager.isFetchingPublicIP = false
+                    guard let self = self else { return }
+                    if let error = error {
+                        wg_log(.error, message: "IP discovery failed: \(error.localizedDescription)")
+                        return
+                    }
+                    guard let data = data,
+                          let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                          !ip.isEmpty else { return }
+                    // Discard a result that raced the tunnel going down — it
+                    // may be the real (untunneled) address.
+                    guard self.tunnelInOperation()?.status == .active else { return }
+                    IPDiscoverySettings.discoveredIP = ip
+                    // Never log the address itself: exported logs would carry
+                    // a timestamped list of the user's exit (or real) IPs.
+                    wg_log(.debug, staticMessage: "IP discovery succeeded")
                 }
-                guard let data = data,
-                      let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !ip.isEmpty else { return }
-                IPDiscoverySettings.discoveredIP = ip
-                wg_log(.info, message: "IP discovery: \(ip)")
             }
             task.resume()
         }

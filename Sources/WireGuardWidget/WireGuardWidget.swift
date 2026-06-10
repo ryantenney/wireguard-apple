@@ -71,11 +71,26 @@ struct VPNStatusProvider: TimelineProvider {
         completion(timeline)
     }
 
+    /// The NE rewrites VPNTrafficData every 30s while a tunnel runs and clears
+    /// it on stop; a heartbeat older than this means no extension is running.
+    private static let trafficHeartbeatStaleAfter: TimeInterval = 180
+
     private func buildEntry() -> VPNStatusEntry {
         let status = VPNStatusData.load()
         let traffic = VPNTrafficData.load()
 
-        let state = status?.state ?? .disconnected
+        var state = status?.state ?? .disconnected
+        // VPNStatusData is written only by the app process. If the tunnel dies
+        // while the app is suspended (server-side disconnect, network loss with
+        // on-demand off), nothing updates it and the widget would show
+        // "Connected" indefinitely — a false sense of security. Trust the NE's
+        // traffic heartbeat as the authority and fail closed.
+        if state == .connected {
+            let heartbeatAge = traffic.map { Date().timeIntervalSince($0.updatedAt) }
+            if heartbeatAge == nil || heartbeatAge! > Self.trafficHeartbeatStaleAfter {
+                state = .disconnected
+            }
+        }
         let tunnelName = status?.tunnelName ?? ""
 
         // Prefer NE-written connectedSince (more reliable, doesn't reset on status changes)

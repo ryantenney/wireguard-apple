@@ -235,7 +235,7 @@
 "settingsNotificationPermissionDeniedMessage" = "Please enable notifications for WGnext in Settings to receive alerts.";
 
 "settingsSectionTitleIPDiscovery" = "IP Discovery";
-"settingsIPDiscovery" = "Show public IP address";
+"settingsIPDiscovery" = "Show public IP (queries icanhazip.com)";
 
 "settingsSectionTitleExportConfigurations" = "Export configurations";
 "settingsExportZipButtonTitle" = "Export zip archive";
@@ -245,6 +245,7 @@
 
 "settingsSectionTitleSessionHistory" = "Session history";
 "settingsSessionHistoryButtonTitle" = "View session history";
+"settingsSessionHistoryRecording" = "Record session history";
 
 // Session history
 

@@ -92,6 +92,14 @@ class SessionHistoryViewController: NSViewController {
         return button
     }()
 
+    private let recordingCheckbox: NSButton = {
+        let checkbox = NSButton()
+        checkbox.title = tr("settingsSessionHistoryRecording")
+        checkbox.setButtonType(.switch)
+        checkbox.state = SessionHistoryStore.isRecordingEnabled ? .on : .off
+        return checkbox
+    }()
+
     private let emptyLabel: NSTextField = {
         let label = NSTextField(labelWithString: tr("sessionHistoryEmptyMessage"))
         label.alignment = .center
@@ -119,12 +127,16 @@ class SessionHistoryViewController: NSViewController {
         clearButton.target = self
         clearButton.action = #selector(clearClicked)
 
+        recordingCheckbox.target = self
+        recordingCheckbox.action = #selector(recordingToggled)
+
         let clipView = NSClipView()
         clipView.documentView = tableView
         scrollView.contentView = clipView
 
         let buttonRow = NSStackView()
         buttonRow.addView(closeButton, in: .leading)
+        buttonRow.addView(recordingCheckbox, in: .center)
         buttonRow.addView(clearButton, in: .trailing)
         buttonRow.orientation = .horizontal
         buttonRow.spacing = 10
@@ -175,6 +187,10 @@ class SessionHistoryViewController: NSViewController {
 
     @objc private func closeClicked() {
         presentingViewController?.dismiss(self)
+    }
+
+    @objc private func recordingToggled() {
+        SessionHistoryStore.isRecordingEnabled = (recordingCheckbox.state == .on)
     }
 
     @objc private func clearClicked() {

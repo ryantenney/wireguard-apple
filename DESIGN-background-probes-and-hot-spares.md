@@ -258,6 +258,18 @@ Each background WireGuard device consumes:
 
 This is negligible compared to the active tunnel. TiT already runs two full devices processing real traffic.
 
+### Privacy: Observable Traffic Signature
+
+Probe and hot-spare devices send real WireGuard handshakes and keepalives over
+the physical interface, outside the tunnel. An on-path observer therefore sees
+the client maintaining contact with **two** VPN servers simultaneously: while
+failed over, the failback probe periodically handshakes with the primary; with
+hot spare enabled, the spare continuously keepalives the next failover target.
+This is a distinctive fingerprint compared to a single WireGuard flow. Users
+whose threat model includes traffic-analysis adversaries should disable
+`useBackgroundProbes` and `hotSpare` (failback then uses the disruptive
+swap-and-check method, which only ever talks to one server at a time).
+
 ### Battery Impact
 
 - Keepalive every 25s is one small UDP packet — less than a typical push notification

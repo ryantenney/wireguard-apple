@@ -15,6 +15,7 @@ class SettingsTableViewController: UITableViewController {
         case exportZipArchive
         case viewLog
         case sessionHistory
+        case sessionHistoryRecording
         case notifyOnDisconnect
         case notifyOnFailover
         case ipDiscovery
@@ -26,6 +27,7 @@ class SettingsTableViewController: UITableViewController {
             case .exportZipArchive: return tr("settingsExportZipButtonTitle")
             case .viewLog: return tr("settingsViewLogButtonTitle")
             case .sessionHistory: return tr("settingsSessionHistoryButtonTitle")
+            case .sessionHistoryRecording: return tr("settingsSessionHistoryRecording")
             case .notifyOnDisconnect: return tr("settingsNotifyOnDisconnect")
             case .notifyOnFailover: return tr("settingsNotifyOnFailover")
             case .ipDiscovery: return tr("settingsIPDiscovery")
@@ -39,7 +41,7 @@ class SettingsTableViewController: UITableViewController {
         [.ipDiscovery],
         [.exportZipArchive],
         [.viewLog],
-        [.sessionHistory]
+        [.sessionHistoryRecording, .sessionHistory]
     ]
 
     let tunnelsManager: TunnelsManager?
@@ -237,6 +239,14 @@ extension SettingsTableViewController {
             cell.isOn = IPDiscoverySettings.isEnabled
             cell.onSwitchToggled = { isOn in
                 IPDiscoverySettings.isEnabled = isOn
+            }
+            return cell
+        } else if field == .sessionHistoryRecording {
+            let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+            cell.message = field.localizedUIString
+            cell.isOn = SessionHistoryStore.isRecordingEnabled
+            cell.onSwitchToggled = { isOn in
+                SessionHistoryStore.isRecordingEnabled = isOn
             }
             return cell
         } else if field == .notifyOnDisconnect || field == .notifyOnFailover {
