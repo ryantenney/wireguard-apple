@@ -62,6 +62,12 @@ type tunnelHandle struct {
 	*device.Logger
 }
 
+// handlesMu guards tunnelHandles, probeHandles, and titHandles. The Swift
+// adapter serializes all bridge calls on one queue today, but unsynchronized
+// Go map writes are a hard runtime crash if that invariant is ever broken
+// (e.g. a second adapter instance), so the registries lock defensively.
+var handlesMu sync.Mutex
+
 var tunnelHandles = make(map[int32]tunnelHandle)
 
 func init() {
@@ -90,6 +96,8 @@ func wgSetLogger(context, loggerFn uintptr) {
 
 //export wgTurnOn
 func wgTurnOn(settings *C.char, tunFd int32) int32 {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	logger := &device.Logger{
 		Verbosef: CLogger(0).Printf,
 		Errorf:   CLogger(1).Printf,
@@ -109,7 +117,8 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 	tun, err := tun.CreateTUNFromFile(os.NewFile(uintptr(dupTunFd), "/dev/tun"), 0)
 	if err != nil {
 		logger.Errorf("Unable to create new tun device from fd: %v", err)
-		unix.Close(dupTunFd)
+		// CreateTUNFromFile closes the file on all of its error paths; closing
+		// dupTunFd again could destroy an unrelated descriptor that reused it.
 		return -1
 	}
 	logger.Verbosef("Attaching to interface")
@@ -118,7 +127,8 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 	err = dev.IpcSet(C.GoString(settings))
 	if err != nil {
 		logger.Errorf("Unable to set IPC settings: %v", err)
-		unix.Close(dupTunFd)
+		// The tun (and its fd) now belong to the device; close it as a whole.
+		dev.Close()
 		return -1
 	}
 
@@ -132,7 +142,7 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 		}
 	}
 	if i == math.MaxInt32 {
-		unix.Close(dupTunFd)
+		dev.Close()
 		return -1
 	}
 	tunnelHandles[i] = tunnelHandle{dev, logger}
@@ -141,6 +151,8 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 
 //export wgTurnOff
 func wgTurnOff(tunnelHandle int32) {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	dev, ok := tunnelHandles[tunnelHandle]
 	if !ok {
 		return
@@ -151,6 +163,8 @@ func wgTurnOff(tunnelHandle int32) {
 
 //export wgSetConfig
 func wgSetConfig(tunnelHandle int32, settings *C.char) int64 {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	dev, ok := tunnelHandles[tunnelHandle]
 	if !ok {
 		return 0
@@ -168,6 +182,8 @@ func wgSetConfig(tunnelHandle int32, settings *C.char) int64 {
 
 //export wgGetConfig
 func wgGetConfig(tunnelHandle int32) *C.char {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	device, ok := tunnelHandles[tunnelHandle]
 	if !ok {
 		return nil
@@ -181,6 +197,8 @@ func wgGetConfig(tunnelHandle int32) *C.char {
 
 //export wgBumpSockets
 func wgBumpSockets(tunnelHandle int32) {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	dev, ok := tunnelHandles[tunnelHandle]
 	if !ok {
 		return
@@ -201,6 +219,8 @@ func wgBumpSockets(tunnelHandle int32) {
 
 //export wgDisableSomeRoamingForBrokenMobileSemantics
 func wgDisableSomeRoamingForBrokenMobileSemantics(tunnelHandle int32) {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	dev, ok := tunnelHandles[tunnelHandle]
 	if !ok {
 		return
@@ -422,6 +442,8 @@ var probeHandles = make(map[int32]probeHandle)
 
 //export wgProbeOn
 func wgProbeOn(settings *C.char, keepaliveOverride int32) int32 {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	logger := &device.Logger{
 		Verbosef: CLogger(0).Printf,
 		Errorf:   CLogger(1).Printf,
@@ -463,6 +485,8 @@ func wgProbeOn(settings *C.char, keepaliveOverride int32) int32 {
 
 //export wgProbeOff
 func wgProbeOff(handle int32) {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := probeHandles[handle]
 	if !ok {
 		return
@@ -473,6 +497,8 @@ func wgProbeOff(handle int32) {
 
 //export wgProbeGetConfig
 func wgProbeGetConfig(handle int32) *C.char {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := probeHandles[handle]
 	if !ok {
 		return nil
@@ -486,6 +512,8 @@ func wgProbeGetConfig(handle int32) *C.char {
 
 //export wgProbeSetConfig
 func wgProbeSetConfig(handle int32, settings *C.char) int64 {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := probeHandles[handle]
 	if !ok {
 		return 0
@@ -503,6 +531,8 @@ func wgProbeSetConfig(handle int32, settings *C.char) int64 {
 
 //export wgProbeBumpSockets
 func wgProbeBumpSockets(handle int32) {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := probeHandles[handle]
 	if !ok {
 		return
@@ -523,6 +553,8 @@ func wgProbeBumpSockets(handle int32) {
 
 //export wgProbePromote
 func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := probeHandles[probeHandleID]
 	if !ok {
 		return -1
@@ -542,7 +574,8 @@ func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
 	realTun, err := tun.CreateTUNFromFile(os.NewFile(uintptr(dupTunFd), "/dev/tun"), 0)
 	if err != nil {
 		h.Errorf("Probe promote: unable to create tun device: %v", err)
-		unix.Close(dupTunFd)
+		// CreateTUNFromFile closes the file on all of its error paths; closing
+		// dupTunFd again could destroy an unrelated descriptor that reused it.
 		return -1
 	}
 
@@ -772,7 +805,10 @@ func titWrapIPUDP(payload []byte, srcIP netip.Addr, ep conn.Endpoint) ([]byte, e
 	if err != nil {
 		return nil, fmt.Errorf("bad endpoint %q: %w", ep.DstToString(), err)
 	}
-	dst := dstAddrPort.Addr()
+	// A 4-in-6 mapped endpoint (::ffff:a.b.c.d) is IPv4 on the wire; unmap it
+	// so it takes the IPv4 path instead of producing an invalid v4-mapped
+	// source in an IPv6 header.
+	dst := dstAddrPort.Addr().Unmap()
 	dstPort := dstAddrPort.Port()
 	const srcPort = 51820
 
@@ -788,6 +824,11 @@ func titWrapIPUDP(payload []byte, srcIP netip.Addr, ep conn.Endpoint) ([]byte, e
 	return titWrapIPv6UDP(payload, src6, dst.As16(), srcPort, dstPort), nil
 }
 
+// titIPv4PacketID provides unique IPv4 Identification values. With DF clear, a
+// constant ID would corrupt packets via reassembly collisions if the
+// Server A → Server B leg ever fragments concurrent packets.
+var titIPv4PacketID uint32 // accessed atomically (go.mod predates atomic.Uint32)
+
 func titWrapIPv4UDP(payload []byte, src, dst [4]byte, srcPort, dstPort uint16) []byte {
 	totalLen := 20 + 8 + len(payload)
 	pkt := make([]byte, totalLen)
@@ -795,6 +836,7 @@ func titWrapIPv4UDP(payload []byte, src, dst [4]byte, srcPort, dstPort uint16) [
 	// IPv4 header
 	pkt[0] = 0x45 // version=4, IHL=5
 	binary.BigEndian.PutUint16(pkt[2:], uint16(totalLen))
+	binary.BigEndian.PutUint16(pkt[4:], uint16(atomic.AddUint32(&titIPv4PacketID, 1))) // identification
 	pkt[8] = 64  // TTL
 	pkt[9] = 17  // protocol: UDP
 	copy(pkt[12:16], src[:])
@@ -853,8 +895,17 @@ func titUnwrapIPUDP(pkt []byte) (payload []byte, src netip.AddrPort, err error) 
 		if len(pkt) < 28 {
 			return nil, netip.AddrPort{}, fmt.Errorf("IPv4+UDP packet too short (%d bytes)", len(pkt))
 		}
+		if pkt[9] != 17 {
+			return nil, netip.AddrPort{}, fmt.Errorf("not UDP (IPv4 protocol %d)", pkt[9])
+		}
+		// Fragments (MF set or nonzero offset) don't carry a complete UDP
+		// segment at the expected offset; the anti-replay/MAC layer would
+		// reject the garbage anyway, but don't feed it to the device.
+		if pkt[6]&0x20 != 0 || binary.BigEndian.Uint16(pkt[6:])&0x1fff != 0 {
+			return nil, netip.AddrPort{}, fmt.Errorf("fragmented IPv4 packet")
+		}
 		ihl := int(pkt[0]&0x0f) * 4
-		if len(pkt) < ihl+8 {
+		if ihl < 20 || len(pkt) < ihl+8 {
 			return nil, netip.AddrPort{}, fmt.Errorf("IPv4+UDP packet too short for IHL")
 		}
 		srcAddr := netip.AddrFrom4([4]byte{pkt[12], pkt[13], pkt[14], pkt[15]})
@@ -863,6 +914,11 @@ func titUnwrapIPUDP(pkt []byte) (payload []byte, src netip.AddrPort, err error) 
 	case 6:
 		if len(pkt) < 48 {
 			return nil, netip.AddrPort{}, fmt.Errorf("IPv6+UDP packet too short (%d bytes)", len(pkt))
+		}
+		if pkt[6] != 17 {
+			// Extension headers (incl. fragments) are not parsed; Server B is
+			// not expected to send them for plain UDP.
+			return nil, netip.AddrPort{}, fmt.Errorf("not UDP (IPv6 next header %d)", pkt[6])
 		}
 		var srcB [16]byte
 		copy(srcB[:], pkt[8:24])
@@ -920,6 +976,8 @@ var titHandles = make(map[int32]titHandle)
 
 //export wgTurnOnTiT
 func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *C.char, tunFd int32) int32 {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	innerLogger := &device.Logger{
 		Verbosef: CLogger(0).Printf,
 		Errorf:   CLogger(1).Printf,
@@ -974,7 +1032,8 @@ func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *
 	innerTunDev, err := tun.CreateTUNFromFile(os.NewFile(uintptr(dupTunFd), "/dev/tun"), 0)
 	if err != nil {
 		innerLogger.Errorf("TiT: unable to create tun device: %v", err)
-		unix.Close(dupTunFd)
+		// CreateTUNFromFile closes the file on all of its error paths; closing
+		// dupTunFd again could destroy an unrelated descriptor that reused it.
 		outerDev.Close()
 		return -1
 	}
@@ -1006,6 +1065,8 @@ func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *
 
 //export wgTurnOffTiT
 func wgTurnOffTiT(handle int32) {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
 	if !ok {
 		return
@@ -1017,6 +1078,8 @@ func wgTurnOffTiT(handle int32) {
 
 //export wgGetConfigTiT
 func wgGetConfigTiT(handle int32) *C.char {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
 	if !ok {
 		return nil
@@ -1030,6 +1093,8 @@ func wgGetConfigTiT(handle int32) *C.char {
 
 //export wgGetOuterConfigTiT
 func wgGetOuterConfigTiT(handle int32) *C.char {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
 	if !ok {
 		return nil
@@ -1043,6 +1108,8 @@ func wgGetOuterConfigTiT(handle int32) *C.char {
 
 //export wgSetInnerConfigTiT
 func wgSetInnerConfigTiT(handle int32, settings *C.char) int64 {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
 	if !ok {
 		return 0
@@ -1059,6 +1126,8 @@ func wgSetInnerConfigTiT(handle int32, settings *C.char) int64 {
 
 //export wgBumpSocketsTiT
 func wgBumpSocketsTiT(handle int32) {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
 	if !ok {
 		return
@@ -1078,6 +1147,8 @@ func wgBumpSocketsTiT(handle int32) {
 
 //export wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT
 func wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle int32) {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
 	if !ok {
 		return
