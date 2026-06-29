@@ -671,17 +671,16 @@ public class ConnectionHealthMonitor {
     private func startHotSpareIfNeeded() {
         guard settings.hotSpare, isRunning, let adapter = adapter else { return }
 
-        // Determine what to probe:
-        // - If on primary (index 0): probe fallback (index 1)
-        // - If on fallback: probe primary (index 0) — doubles as failback monitor
-        let targetIndex: Int
-        if activeIndex == 0 {
-            targetIndex = 1
-        } else {
-            targetIndex = 0
-        }
+        // Probe the next forward failover target — the same config we'd switch to
+        // if the active connection went unhealthy ((activeIndex + 1) wrapping at the
+        // end of the chain). This keeps the next-in-line connection pre-warmed for
+        // instant forward failover. Failback to the primary is handled separately by
+        // the periodic failback probe (`probeFailbackBackground`), so the single hot
+        // spare slot is reserved for forward protection.
+        let targetIndex = (activeIndex + 1) % configurations.count
 
-        guard targetIndex < configurations.count else { return }
+        // Nothing to pre-warm if the next target is the connection we're already on.
+        guard targetIndex != activeIndex else { return }
 
         // Don't start if already running for this target
         if hotSpareConfigIndex == targetIndex, hotSpareHandle != nil { return }

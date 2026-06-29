@@ -159,12 +159,18 @@ On primary failure detected:
   1. Hot spare has an established Noise session → promote immediately
   2. adapter.promoteProbe(config[1]) → null tun swapped for real utun
   3. Existing session starts routing traffic — zero handshake delay
-  4. Start new hot spare for config[0] (failback monitoring)
+  4. Start new hot spare for config[2] (the next forward target)
 ```
 
-The hot spare target is determined by position:
-- On primary (index 0): spare probes fallback (index 1)
-- On fallback: spare probes primary (index 0) — doubles as failback monitor
+The hot spare always pre-warms the **next forward failover target** — the same
+config the health monitor would switch to if the active connection went unhealthy,
+i.e. `(activeIndex + 1) % configs.count` (wrapping back to the primary at the end of
+the chain). For example, on `config[1]` the spare probes `config[2]`. This keeps the
+single spare slot dedicated to instant *forward* failover.
+
+Failback to the primary is handled independently by the periodic failback probe
+(`probeFailbackBackground`, see above), so the hot spare does not need to double as a
+failback monitor.
 
 ### Data Flow Diagram
 

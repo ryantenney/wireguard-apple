@@ -53,8 +53,14 @@ When primary fails:
   1. Health monitor detects unhealthy connection (~40s)
   2. Hot spare already has an established WireGuard session
   3. Probe promoted to active tunnel — session preserved
-  4. New hot spare started for config[0] (to monitor primary recovery)
+  4. New hot spare started for config[2] (the next forward target)
 ```
+
+The hot spare always tracks the **next forward failover target** — the same config
+WGnext would switch to next. On `config[1]` it pre-warms `config[2]`, and so on,
+wrapping back to the primary at the end of the chain. Failback to the primary is
+handled separately by the periodic failback probe, so the spare stays dedicated to
+forward failover.
 
 ### Zero-handshake promotion
 
