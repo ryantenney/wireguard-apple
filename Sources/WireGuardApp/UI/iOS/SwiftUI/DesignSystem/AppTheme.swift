@@ -3,6 +3,7 @@
 
 import SwiftUI
 import UIKit
+import WidgetKit
 
 // MARK: - Color helpers
 
@@ -55,6 +56,11 @@ enum AppAccent: String, CaseIterable, Identifiable {
 
     var color: Color { Color(rgb: rgb) }
     var uiColor: UIColor { UIColor(rgb: rgb) }
+
+    /// Nearest accent for a packed 0xRRGGBB value (defaults to orange).
+    static func matching(rgb: UInt32) -> AppAccent {
+        AppAccent.allCases.first { $0.rgb == rgb } ?? .orange
+    }
 
     var displayName: String {
         switch self {
@@ -110,12 +116,16 @@ final class AppTheme: ObservableObject {
     static let shared = AppTheme()
 
     private enum Keys {
-        static let accent = "wgnext.theme.accent"
         static let appearance = "wgnext.theme.appearance"
     }
 
+    /// Accent persists to the shared app group (`AppearanceStore`) so the widget
+    /// renders the same accent; changing it refreshes the widget timelines.
     @Published var accent: AppAccent {
-        didSet { UserDefaults.standard.set(accent.rawValue, forKey: Keys.accent) }
+        didSet {
+            AppearanceStore.accentRGB = accent.rgb
+            WidgetCenter.shared.reloadAllTimelines()
+        }
     }
 
     @Published var appearance: AppAppearance {
@@ -123,10 +133,9 @@ final class AppTheme: ObservableObject {
     }
 
     init() {
-        let defaults = UserDefaults.standard
         // Default accent is orange — the chosen light-mode hero in the redesign.
-        accent = AppAccent(rawValue: defaults.string(forKey: Keys.accent) ?? "") ?? .orange
-        appearance = AppAppearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
+        accent = AppAccent.matching(rgb: AppearanceStore.accentRGB)
+        appearance = AppAppearance(rawValue: UserDefaults.standard.string(forKey: Keys.appearance) ?? "") ?? .system
     }
 }
 

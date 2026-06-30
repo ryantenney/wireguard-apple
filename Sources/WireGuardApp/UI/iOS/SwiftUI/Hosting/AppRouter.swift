@@ -76,12 +76,12 @@ final class AppRouter: NSObject, ObservableObject {
         push(host)
     }
 
-    /// Tunnel-in-Tunnel detail is not part of this redesign pass — fall back to
-    /// the existing UIKit detail screen.
     func showTiTGroup(_ node: TunnelNode) {
-        guard let manager = manager else { return }
-        let detailVC = TunnelInTunnelDetailTableViewController(tunnelsManager: manager, tunnel: node.container)
-        push(detailVC)
+        let host = makeDetailHost(TunnelInTunnelDetailView(node: node), title: node.name)
+        host.navigationItem.rightBarButtonItem = UIBarButtonItem(
+            systemItem: .edit,
+            primaryAction: UIAction { [weak self] _ in self?.editTiTGroup(node) }, menu: nil)
+        push(host)
     }
 
     func showSettings() {
@@ -210,6 +210,15 @@ final class AppRouter: NSObject, ObservableObject {
     func editFailoverGroup(_ node: TunnelNode) {
         guard let manager = manager else { return }
         let editVC = FailoverGroupEditTableViewController(tunnelsManager: manager, groupTunnel: node.container)
+        editVC.delegate = self
+        let editNC = UINavigationController(rootViewController: editVC)
+        editNC.modalPresentationStyle = .formSheet
+        present(editNC)
+    }
+
+    func editTiTGroup(_ node: TunnelNode) {
+        guard let manager = manager else { return }
+        let editVC = TunnelInTunnelEditTableViewController(tunnelsManager: manager, groupTunnel: node.container)
         editVC.delegate = self
         let editNC = UINavigationController(rootViewController: editVC)
         editNC.modalPresentationStyle = .formSheet

@@ -317,6 +317,7 @@ targets:
       - path: Sources/Shared/VPNStatusData.swift
       - path: Sources/Shared/VPNTrafficData.swift
       - path: Sources/Shared/IPDiscoverySettings.swift
+      - path: Sources/Shared/AppearanceStore.swift
     dependencies:
       - sdk: SwiftUI.framework
       - sdk: WidgetKit.framework

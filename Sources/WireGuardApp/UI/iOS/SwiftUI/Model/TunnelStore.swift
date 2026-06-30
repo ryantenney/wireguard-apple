@@ -182,6 +182,8 @@ final class TunnelStore: ObservableObject {
         guard node.status == .active else { return }
         if node.isFailoverGroup {
             node.refreshFailoverState(using: manager)
+        } else if node.isTiTGroup {
+            node.refreshTiTState(using: manager)
         } else if node.isPlainTunnel {
             node.refreshRuntimeConfiguration()
         }

@@ -133,20 +133,6 @@ private func formatRate(_ bytesPerSecond: Double) -> String {
     }
 }
 
-private func formatDuration(since date: Date) -> String {
-    let seconds = Int(Date().timeIntervalSince(date))
-    if seconds < 60 {
-        return "<1m"
-    }
-    let minutes = seconds / 60
-    let hours = minutes / 60
-    let remainingMinutes = minutes % 60
-    if hours == 0 {
-        return "\(minutes)m"
-    }
-    return "\(hours)h \(remainingMinutes)m"
-}
-
 private func formatBytes(_ bytes: UInt64) -> String {
     if bytes < 1024 {
         return "\(bytes) B"
@@ -157,6 +143,26 @@ private func formatBytes(_ bytes: UInt64) -> String {
     } else {
         return String(format: "%.2f GB", Double(bytes) / (1024 * 1024 * 1024))
     }
+}
+
+// MARK: - Design tokens
+
+private extension Color {
+    init(rgb: UInt32) {
+        self.init(
+            red: Double((rgb >> 16) & 0xFF) / 255,
+            green: Double((rgb >> 8) & 0xFF) / 255,
+            blue: Double(rgb & 0xFF) / 255
+        )
+    }
+}
+
+private enum WidgetPalette {
+    /// Live accent shared with the app via the app group.
+    static var accent: Color { Color(rgb: AppearanceStore.accentRGB) }
+    static let connecting = Color(rgb: 0xF0B13B)
+    static let down = Color(rgb: 0xF4685E)
+    static let armed = Color(rgb: 0xF0B13B)
 }
 
 // MARK: - Sparkline View
@@ -213,7 +219,11 @@ struct VPNStatusWidgetView: View {
 
     var body: some View {
         if #available(iOSApplicationExtension 17.0, *) {
-            content.containerBackground(.fill.tertiary, for: .widget)
+            content.containerBackground(for: .widget) {
+                Rectangle()
+                    .fill(.fill.tertiary)
+                    .overlay(entry.state == .connected ? WidgetPalette.accent.opacity(0.10) : Color.clear)
+            }
         } else {
             content.padding()
         }
@@ -233,68 +243,17 @@ struct VPNStatusWidgetView: View {
 
     var smallView: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                statusIcon
-                Text("WGnext")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-            }
-
+            wordmark
             Spacer()
-
-            if entry.state == .connected, let connectedAt = entry.connectedAt {
-                Text(formatDuration(since: connectedAt))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-
             statusLabel
-                .font(.headline)
-
-            if let activeConfig = entry.activeConfigName, !activeConfig.isEmpty {
-                // Failover: show which specific config is active
-                Text(activeConfig)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                if !entry.tunnelName.isEmpty && entry.tunnelName != activeConfig {
-                    Text(entry.tunnelName)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-            } else if !entry.tunnelName.isEmpty {
-                Text(entry.tunnelName)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-
+            primaryName
             if entry.state == .connected {
-                if let ip = entry.discoveredIP {
-                    Text(ip)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
                 if let connectedAt = entry.connectedAt {
                     Text(connectedAt, style: .relative)
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
-                if let rxRate = entry.rxRate, let txRate = entry.txRate {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 8))
-                        Text(formatRate(rxRate))
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 8))
-                        Text(formatRate(txRate))
-                    }
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                }
+                throughputRow
             } else if entry.state == .disconnected && entry.hasOnDemandRules {
                 onDemandBadge
             }
@@ -308,43 +267,10 @@ struct VPNStatusWidgetView: View {
         HStack(spacing: 12) {
             // Left column: status info
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    statusIcon
-                    Text("WGnext")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                }
-
+                wordmark
                 Spacer()
-
-                if entry.state == .connected, let connectedAt = entry.connectedAt {
-                    Text(formatDuration(since: connectedAt))
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-
                 statusLabel
-                    .font(.headline)
-
-                if let activeConfig = entry.activeConfigName, !activeConfig.isEmpty {
-                    Text(activeConfig)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                    if !entry.tunnelName.isEmpty && entry.tunnelName != activeConfig {
-                        Text(entry.tunnelName)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                } else if !entry.tunnelName.isEmpty {
-                    Text(entry.tunnelName)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-
+                primaryName
                 if entry.state == .disconnected && entry.hasOnDemandRules {
                     onDemandBadge
                 }
@@ -352,51 +278,28 @@ struct VPNStatusWidgetView: View {
 
             Spacer()
 
+            // Right column: traffic stats + sparkline
             if entry.state == .connected {
-                // Right column: traffic stats + sparkline
-                VStack(alignment: .trailing, spacing: 4) {
-                    if let ip = entry.discoveredIP {
-                        HStack(spacing: 2) {
-                            Image(systemName: "network")
-                                .font(.system(size: 8))
-                            Text(ip)
-                                .font(.caption2)
-                        }
-                        .foregroundColor(.secondary)
-                    }
+                VStack(alignment: .trailing, spacing: 5) {
                     if let connectedAt = entry.connectedAt {
-                        HStack(spacing: 2) {
-                            Text("Connected")
-                                .font(.caption2)
-                            Text(connectedAt, style: .relative)
-                                .font(.caption2)
-                        }
-                        .foregroundColor(.secondary)
+                        Text(connectedAt, style: .relative)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundColor(.secondary)
                     }
-
                     if !entry.trafficSamples.isEmpty {
-                        SparklineView(samples: entry.trafficSamples, color: .green)
-                            .frame(height: 32)
+                        SparklineView(samples: entry.trafficSamples, color: WidgetPalette.accent)
+                            .frame(width: 132, height: 30)
                     }
-
-                    // Traffic rates
-                    if let rxRate = entry.rxRate, let txRate = entry.txRate {
-                        HStack(spacing: 6) {
-                            Label(formatRate(rxRate), systemImage: "arrow.down")
-                            Label(formatRate(txRate), systemImage: "arrow.up")
-                        }
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    throughputRow
+                    if let rx = entry.rxBytes, let tx = entry.txBytes, rx > 0 || tx > 0 {
+                        Text("↓\(formatBytes(rx))  ↑\(formatBytes(tx))")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundColor(.secondary)
                     }
-
-                    // Session totals
-                    if let rx = entry.rxBytes, let tx = entry.txBytes, (rx > 0 || tx > 0) {
-                        HStack(spacing: 6) {
-                            Label(formatBytes(rx), systemImage: "arrow.down.circle")
-                            Label(formatBytes(tx), systemImage: "arrow.up.circle")
-                        }
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    if let ip = entry.discoveredIP {
+                        Text(ip)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundColor(.secondary)
                     }
                 }
             }
@@ -405,15 +308,53 @@ struct VPNStatusWidgetView: View {
 
     // MARK: - Shared Subviews
 
-    var statusIcon: some View {
-        Circle()
-            .fill(statusColor)
-            .frame(width: 10, height: 10)
+    var wordmark: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 9, height: 9)
+            Text("WGNEXT")
+                .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                .foregroundColor(.secondary)
+        }
     }
 
     var statusLabel: some View {
         Text(statusText)
+            .font(.system(.headline, design: .rounded).weight(.semibold))
             .foregroundColor(statusColor)
+    }
+
+    @ViewBuilder var primaryName: some View {
+        if let activeConfig = entry.activeConfigName, !activeConfig.isEmpty {
+            Text(activeConfig)
+                .font(.subheadline)
+                .foregroundColor(.primary)
+                .lineLimit(1)
+            if !entry.tunnelName.isEmpty && entry.tunnelName != activeConfig {
+                Text(entry.tunnelName)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        } else if !entry.tunnelName.isEmpty {
+            Text(entry.tunnelName)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    @ViewBuilder var throughputRow: some View {
+        if let rxRate = entry.rxRate, let txRate = entry.txRate {
+            HStack(spacing: 8) {
+                Text("↓\(formatRate(rxRate))")
+                    .foregroundColor(WidgetPalette.accent)
+                Text("↑\(formatRate(txRate))")
+                    .foregroundColor(.secondary)
+            }
+            .font(.system(.caption2, design: .monospaced))
+        }
     }
 
     var onDemandBadge: some View {
@@ -421,27 +362,25 @@ struct VPNStatusWidgetView: View {
             Image(systemName: "bolt.fill")
                 .font(.system(size: 8))
             Text(entry.isOnDemandEnabled ? "On-Demand Active" : "On-Demand Configured")
-                .font(.caption2)
+                .font(.system(.caption2, design: .monospaced))
         }
-        .foregroundColor(.orange)
+        .foregroundColor(WidgetPalette.armed)
     }
 
     var statusText: String {
         switch entry.state {
         case .connected: return "Connected"
-        case .connecting: return "Connecting..."
-        case .disconnected: return "Disconnected"
-        case .disconnecting: return "Disconnecting..."
+        case .connecting: return "Connecting…"
+        case .disconnected: return entry.hasOnDemandRules ? "Armed" : "Disconnected"
+        case .disconnecting: return "Disconnecting…"
         }
     }
 
     var statusColor: Color {
         switch entry.state {
-        case .connected: return .green
-        case .connecting: return .orange
-        case .disconnected:
-            return entry.hasOnDemandRules ? .orange : .red
-        case .disconnecting: return .orange
+        case .connected: return WidgetPalette.accent
+        case .connecting, .disconnecting: return WidgetPalette.connecting
+        case .disconnected: return entry.hasOnDemandRules ? WidgetPalette.armed : WidgetPalette.down
         }
     }
 }
