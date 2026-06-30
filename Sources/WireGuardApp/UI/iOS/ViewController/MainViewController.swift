@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
+// Copyright © 2026 Ryan Tenney.
 
 import UIKit
 
@@ -7,17 +8,17 @@ class MainViewController: UISplitViewController {
 
     var tunnelsManager: TunnelsManager?
     var onTunnelsManagerReady: ((TunnelsManager) -> Void)?
-    var tunnelsListVC: TunnelsListTableViewController?
+    var homeHost: TunnelsHomeHostingController?
 
     init() {
         let detailVC = UIViewController()
         detailVC.view.backgroundColor = .systemBackground
         let detailNC = UINavigationController(rootViewController: detailVC)
 
-        let masterVC = TunnelsListTableViewController()
+        let masterVC = TunnelsHomeHostingController()
         let masterNC = UINavigationController(rootViewController: masterVC)
 
-        tunnelsListVC = masterVC
+        homeHost = masterVC
 
         super.init(nibName: nil, bundle: nil)
 
@@ -38,7 +39,7 @@ class MainViewController: UISplitViewController {
         // On iPad, always show both masterVC and detailVC, even in portrait mode, like the Settings app
         preferredDisplayMode = .allVisible
 
-        // Create the tunnels manager, and when it's ready, inform tunnelsListVC
+        // Create the tunnels manager, and when it's ready, hand it to the SwiftUI host.
         TunnelsManager.create { [weak self] result in
             guard let self = self else { return }
 
@@ -47,7 +48,7 @@ class MainViewController: UISplitViewController {
                 ErrorPresenter.showErrorAlert(error: error, from: self)
             case .success(let tunnelsManager):
                 self.tunnelsManager = tunnelsManager
-                self.tunnelsListVC?.setTunnelsManager(tunnelsManager: tunnelsManager)
+                self.homeHost?.install(manager: tunnelsManager)
 
                 tunnelsManager.activationDelegate = self
 
@@ -89,19 +90,9 @@ extension MainViewController {
     }
 
     func showTunnelDetailForTunnel(named tunnelName: String, animated: Bool, shouldToggleStatus: Bool) {
-        let showTunnelDetailBlock: (TunnelsManager) -> Void = { [weak self] tunnelsManager in
+        let showTunnelDetailBlock: (TunnelsManager) -> Void = { [weak self] _ in
             guard let self = self else { return }
-            guard let tunnelsListVC = self.tunnelsListVC else { return }
-            if let tunnel = tunnelsManager.tunnel(named: tunnelName) {
-                tunnelsListVC.showTunnelDetail(for: tunnel, animated: false)
-                if shouldToggleStatus {
-                    if tunnel.status == .inactive {
-                        tunnelsManager.startActivation(of: tunnel)
-                    } else if tunnel.status == .active {
-                        tunnelsManager.startDeactivation(of: tunnel)
-                    }
-                }
-            }
+            self.homeHost?.showTunnelDetail(named: tunnelName, shouldToggle: shouldToggleStatus)
         }
         if let tunnelsManager = tunnelsManager {
             showTunnelDetailBlock(tunnelsManager)
