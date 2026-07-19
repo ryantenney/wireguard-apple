@@ -28,6 +28,11 @@ public protocol FailoverAdapterProtocol: AnyObject {
     func promoteProbe(probeHandle: Int32, tunnelConfiguration: TunnelConfiguration,
                       excludedEndpoints: [Endpoint],
                       completionHandler: @escaping (Error?) -> Void)
+
+    /// Rebind the active tunnel's UDP sockets and retry handshakes. Used to kick the
+    /// tunnel immediately after the underlying network recovers (e.g. captive portal
+    /// sign-in) without waiting for a timer or a network path change.
+    func bumpTunnelSockets()
 }
 
 /// Delegate protocol for receiving failover events from the health monitor.
@@ -40,6 +45,18 @@ public protocol ConnectionHealthMonitorDelegate: AnyObject {
 
     /// Called when a failback probe succeeds and the monitor returns to a higher-priority config.
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didFailbackToConfigAt index: Int)
+
+    /// Called when the monitor detects that the underlying network itself is blocked
+    /// (captive portal or offline) and pauses failover instead of cycling configs.
+    func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectBlockedNetwork status: UnderlyingNetworkStatus)
+
+    /// Called when a previously blocked underlying network clears and normal monitoring resumes.
+    func healthMonitorDidClearBlockedNetwork(_ monitor: ConnectionHealthMonitor)
+}
+
+public extension ConnectionHealthMonitorDelegate {
+    func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectBlockedNetwork status: UnderlyingNetworkStatus) {}
+    func healthMonitorDidClearBlockedNetwork(_ monitor: ConnectionHealthMonitor) {}
 }
 
 /// Log level for failover messages.
@@ -134,6 +151,29 @@ public class ConnectionHealthMonitor {
     /// Config index being probed by the hot spare.
     private var hotSpareConfigIndex: Int?
 
+    // MARK: - Blocked Network State
+
+    /// Detector for captive-portal / offline underlying networks.
+    /// See DESIGN-captive-portal-handling.md.
+    private lazy var captivePortalDetector = CaptivePortalDetector()
+
+    /// When the underlying network was detected as blocked (captive or offline).
+    /// Non-nil means the monitor is holding: no config switching, no probes, no
+    /// flap-cycle counting — every failover target is equally unreachable.
+    private var networkBlockedSince: Date?
+
+    /// Most recent blocked-network verdict (meaningful while `networkBlockedSince != nil`).
+    private var networkBlockedStatus: UnderlyingNetworkStatus = .clear
+
+    /// Timer polling the detector while the network is blocked.
+    private var networkRecheckTimer: DispatchSourceTimer?
+
+    /// Whether a detector check is in flight (prevents overlapping checks).
+    private var isCheckingNetwork = false
+
+    /// How often to re-probe the underlying network while blocked.
+    private let networkRecheckInterval: TimeInterval = 15
+
     // MARK: - Initialization
 
     public init(
@@ -187,6 +227,9 @@ public class ConnectionHealthMonitor {
             self.healthCheckTimer = nil
             self.failbackTimer?.cancel()
             self.failbackTimer = nil
+            self.networkRecheckTimer?.cancel()
+            self.networkRecheckTimer = nil
+            self.networkBlockedSince = nil
             self.stopFailbackProbe()
             self.stopHotSpare()
             self.logHandler(.verbose, "Failover: health monitor stopped")
@@ -198,6 +241,14 @@ public class ConnectionHealthMonitor {
     public func networkPathDidChange() {
         workQueue.async {
             guard self.isRunning else { return }
+
+            if self.networkBlockedSince != nil {
+                // The user may have switched to a different network; find out right away
+                // instead of waiting for the next recheck tick.
+                self.logHandler(.verbose, "Failover: network change while blocked, re-probing underlying network")
+                self.recheckBlockedNetwork()
+                return
+            }
 
             // Restart the hot spare if it was force-stopped (iOS offline kills
             // all probe devices via stopAllProbes). The adapter rejects probe
@@ -242,7 +293,7 @@ public class ConnectionHealthMonitor {
     }
 
     private func checkHealth() {
-        guard isRunning, !isProbing, let adapter = adapter else { return }
+        guard isRunning, !isProbing, networkBlockedSince == nil, let adapter = adapter else { return }
 
         adapter.getRuntimeConfiguration { [weak self] (configString: String?) in
             guard let self = self, let configString = configString else { return }
@@ -261,6 +312,10 @@ public class ConnectionHealthMonitor {
         if isProbing {
             return
         }
+
+        // A poll callback may have been queued before the blocked state was entered;
+        // evaluation (and any switching it leads to) is suspended while blocked.
+        guard networkBlockedSince == nil else { return }
 
         let (currentTx, currentRx) = Self.parseTxRxBytes(from: runtimeConfig)
 
@@ -346,6 +401,18 @@ public class ConnectionHealthMonitor {
             consecutiveCycles = 0
         }
 
+        // Before switching: if the underlying network itself is captive or offline,
+        // every failover target is equally unreachable — hold instead of cycling.
+        if settings.captivePortalDetection {
+            verifyUnderlyingNetworkThenFailover(txWithoutRxDuration: duration)
+            return
+        }
+
+        performFailover(txWithoutRxDuration: duration)
+    }
+
+    /// Switch away from the unhealthy active config — hot spare first, then next in line.
+    private func performFailover(txWithoutRxDuration duration: TimeInterval) {
         // Try hot spare for pre-validated instant failover
         if tryHotSpareFailover() {
             return
@@ -364,6 +431,96 @@ public class ConnectionHealthMonitor {
         let now = DispatchTime.now().uptimeNanoseconds
         guard now > time.uptimeNanoseconds else { return 0 }
         return TimeInterval(now - time.uptimeNanoseconds) / 1_000_000_000
+    }
+
+    // MARK: - Blocked Network (captive portal / offline)
+
+    /// Probe the underlying network; fail over only if it's clear, otherwise enter the
+    /// holding state. Runs the actual switch asynchronously after the probe returns.
+    private func verifyUnderlyingNetworkThenFailover(txWithoutRxDuration: TimeInterval) {
+        guard !isCheckingNetwork else { return }
+        isCheckingNetwork = true
+        logHandler(.verbose, "Failover: verifying underlying network before switching configs")
+        captivePortalDetector.check { [weak self] status in
+            guard let self = self else { return }
+            self.workQueue.async {
+                self.isCheckingNetwork = false
+                guard self.isRunning, self.networkBlockedSince == nil else { return }
+                switch status {
+                case .clear:
+                    self.performFailover(txWithoutRxDuration: txWithoutRxDuration)
+                case .captive, .offline:
+                    self.enterNetworkBlocked(status: status)
+                }
+            }
+        }
+    }
+
+    /// Enter the holding state: no failover target can succeed, so stop probes, stop
+    /// counting flap cycles, and poll the detector until the network clears.
+    private func enterNetworkBlocked(status: UnderlyingNetworkStatus) {
+        // Never double-enter: overwriting networkRecheckTimer would leak an active timer.
+        guard networkBlockedSince == nil else {
+            networkBlockedStatus = status
+            return
+        }
+
+        networkBlockedSince = Date()
+        networkBlockedStatus = status
+        txWithoutRxSince = nil
+        stopFailbackProbe()
+        stopHotSpare()
+        isProbing = false
+
+        let reason = (status == .captive) ? "captive portal detected" : "network offline"
+        logHandler(.error, "Failover: \(reason) on the underlying network — pausing failover until it clears")
+        delegate?.healthMonitor(self, didDetectBlockedNetwork: status)
+
+        let timer = DispatchSource.makeTimerSource(queue: workQueue)
+        timer.schedule(deadline: .now() + networkRecheckInterval, repeating: networkRecheckInterval)
+        timer.setEventHandler { [weak self] in
+            self?.recheckBlockedNetwork()
+        }
+        timer.resume()
+        networkRecheckTimer = timer
+    }
+
+    private func recheckBlockedNetwork() {
+        guard isRunning, networkBlockedSince != nil, !isCheckingNetwork else { return }
+        isCheckingNetwork = true
+        captivePortalDetector.check { [weak self] status in
+            guard let self = self else { return }
+            self.workQueue.async {
+                self.isCheckingNetwork = false
+                guard self.isRunning, let blockedSince = self.networkBlockedSince else { return }
+                if status == .clear {
+                    self.exitNetworkBlocked()
+                } else {
+                    self.networkBlockedStatus = status
+                    let elapsed = Int(Date().timeIntervalSince(blockedSince))
+                    self.logHandler(.verbose, "Failover: underlying network still blocked (\(status == .captive ? "captive" : "offline"), \(elapsed)s)")
+                }
+            }
+        }
+    }
+
+    /// Leave the holding state: kick the active config's sockets so a handshake is
+    /// attempted immediately, reset traffic baselines, and resume normal monitoring.
+    /// Deliberately stays on the config that was active when the network got blocked —
+    /// time spent blocked says nothing about which server is best.
+    private func exitNetworkBlocked() {
+        networkBlockedSince = nil
+        networkBlockedStatus = .clear
+        networkRecheckTimer?.cancel()
+        networkRecheckTimer = nil
+        lastTxBytes = 0
+        lastRxBytes = 0
+        txWithoutRxSince = nil
+
+        logHandler(.error, "Failover: underlying network cleared — resuming monitoring on config #\(activeIndex)")
+        adapter?.bumpTunnelSockets()
+        delegate?.healthMonitorDidClearBlockedNetwork(self)
+        startHotSpareIfNeeded()
     }
 
     // MARK: - Config Switching
@@ -440,7 +597,7 @@ public class ConnectionHealthMonitor {
     }
 
     private func probeFailback() {
-        guard isRunning, activeIndex != 0, !isProbing, let adapter = adapter else { return }
+        guard isRunning, networkBlockedSince == nil, activeIndex != 0, !isProbing, let adapter = adapter else { return }
 
         if settings.useBackgroundProbes {
             probeFailbackBackground()
@@ -669,7 +826,7 @@ public class ConnectionHealthMonitor {
 
     /// Start a hot spare probe for the next failover target, if hot spare mode is enabled.
     private func startHotSpareIfNeeded() {
-        guard settings.hotSpare, isRunning, let adapter = adapter else { return }
+        guard settings.hotSpare, isRunning, networkBlockedSince == nil, let adapter = adapter else { return }
 
         // Probe the next forward failover target — the same config we'd switch to
         // if the active connection went unhealthy ((activeIndex + 1) wrapping at the
@@ -825,6 +982,11 @@ public class ConnectionHealthMonitor {
             }
             if let txWithoutRxSince = self.txWithoutRxSince {
                 state["txWithoutRxSince"] = Date().timeIntervalSince1970 - Self.secondsSince(txWithoutRxSince)
+            }
+            if let blockedSince = self.networkBlockedSince {
+                state["networkBlocked"] = true
+                state["captivePortalDetected"] = (self.networkBlockedStatus == .captive)
+                state["networkBlockedSince"] = blockedSince.timeIntervalSince1970
             }
 
             // If hot spare is running, query its probe for handshake status

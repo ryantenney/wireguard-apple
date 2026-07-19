@@ -455,6 +455,23 @@ public class WireGuardAdapter {
         }
     }
 
+    /// Rebind the active tunnel's UDP sockets and retry handshakes. Safe to call in any
+    /// state; does nothing unless a tunnel is running. Used by the health monitor to kick
+    /// the tunnel immediately after the underlying network recovers (e.g. captive portal
+    /// sign-in), when no network path change fires to do it for us.
+    public func bumpTunnelSockets() {
+        workQueue.async {
+            switch self.state {
+            case .started(let handle, _):
+                wgBumpSockets(handle)
+            case .startedTiT(let handle, _):
+                wgBumpSocketsTiT(handle)
+            default:
+                break
+            }
+        }
+    }
+
     // MARK: - Background Probe methods
 
     /// Active background probe handles, keyed by an arbitrary caller-chosen ID.

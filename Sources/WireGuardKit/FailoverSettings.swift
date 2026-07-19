@@ -34,6 +34,11 @@ public struct FailoverSettings: Codable, Equatable {
     /// A value of 0 means explicitly disable persistent keepalive.
     public var persistentKeepaliveOverride: UInt16?
 
+    /// Whether to verify the underlying network before switching configs. When the network
+    /// itself is captive or offline, every failover target is equally unreachable, so the
+    /// monitor holds instead of cycling configs. See DESIGN-captive-portal-handling.md.
+    public var captivePortalDetection: Bool
+
     public init(
         trafficTimeout: TimeInterval = 30,
         healthCheckInterval: TimeInterval = 10,
@@ -41,7 +46,8 @@ public struct FailoverSettings: Codable, Equatable {
         autoFailback: Bool = true,
         useBackgroundProbes: Bool = true,
         hotSpare: Bool = false,
-        persistentKeepaliveOverride: UInt16? = nil
+        persistentKeepaliveOverride: UInt16? = nil,
+        captivePortalDetection: Bool = true
     ) {
         self.trafficTimeout = trafficTimeout
         self.healthCheckInterval = healthCheckInterval
@@ -50,6 +56,7 @@ public struct FailoverSettings: Codable, Equatable {
         self.useBackgroundProbes = useBackgroundProbes
         self.hotSpare = hotSpare
         self.persistentKeepaliveOverride = persistentKeepaliveOverride
+        self.captivePortalDetection = captivePortalDetection
     }
 
     // MARK: - Migration from older settings
@@ -62,6 +69,7 @@ public struct FailoverSettings: Codable, Equatable {
         case useBackgroundProbes
         case hotSpare
         case persistentKeepaliveOverride
+        case captivePortalDetection
         // Legacy key
         case handshakeTimeout
     }
@@ -83,6 +91,7 @@ public struct FailoverSettings: Codable, Equatable {
         self.useBackgroundProbes = try container.decodeIfPresent(Bool.self, forKey: .useBackgroundProbes) ?? true
         self.hotSpare = try container.decodeIfPresent(Bool.self, forKey: .hotSpare) ?? false
         self.persistentKeepaliveOverride = try container.decodeIfPresent(UInt16.self, forKey: .persistentKeepaliveOverride)
+        self.captivePortalDetection = try container.decodeIfPresent(Bool.self, forKey: .captivePortalDetection) ?? true
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -94,5 +103,6 @@ public struct FailoverSettings: Codable, Equatable {
         try container.encode(useBackgroundProbes, forKey: .useBackgroundProbes)
         try container.encode(hotSpare, forKey: .hotSpare)
         try container.encodeIfPresent(persistentKeepaliveOverride, forKey: .persistentKeepaliveOverride)
+        try container.encode(captivePortalDetection, forKey: .captivePortalDetection)
     }
 }

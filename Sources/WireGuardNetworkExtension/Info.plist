@@ -22,6 +22,20 @@
 	<string>$(VERSION_NAME)</string>
 	<key>CFBundleVersion</key>
 	<string>$(VERSION_ID)</string>
+	<!-- CaptivePortalDetector fetches http://captive.apple.com/hotspot-detect.html to
+	     classify the underlying network; the probe must be plain HTTP so a captive
+	     portal can intercept it. See DESIGN-captive-portal-handling.md. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>captive.apple.com</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>

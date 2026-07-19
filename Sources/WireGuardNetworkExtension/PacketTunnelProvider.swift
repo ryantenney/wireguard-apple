@@ -720,6 +720,15 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
         ))
     }
 
+    func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectBlockedNetwork status: UnderlyingNetworkStatus) {
+        let reason = (status == .captive) ? "captive portal" : "offline"
+        wg_log(.info, message: "Failover: underlying network blocked (\(reason)) — failover paused")
+    }
+
+    func healthMonitorDidClearBlockedNetwork(_ monitor: ConnectionHealthMonitor) {
+        wg_log(.info, message: "Failover: underlying network cleared — failover resumed")
+    }
+
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didFailbackToConfigAt index: Int) {
         activeConfigIndex = index
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
