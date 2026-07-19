@@ -153,6 +153,10 @@ The iOS app root is `RootTabBarController` (`Sources/WireGuardApp/UI/iOS/RootTab
 - iOS `Info.plist` gained `NSLocationWhenInUseUsageDescription`, `NSLocalNetworkUsageDescription`, and ATS `NSAllowsArbitraryLoads` (user-entered plain-HTTP speed test servers).
 - No macOS UI for this feature yet; the `SpeedTest/` sources are not in the macOS target.
 
+## Captive Portal Handling
+
+See `DESIGN-captive-portal-handling.md`. On-demand Connect rules carry a captive-check `probeURL` so on-demand doesn't block portal sign-in. `Sources/WireGuardKit/CaptivePortalDetector.swift` probes the underlying network from the extension (provider-process traffic bypasses the utun). When the underlying network is captive/offline, `ConnectionHealthMonitor` enters a `networkBlocked` holding state (no config cycling, probes suspended, detector polled) instead of failing over, and reports `networkBlocked`/`captivePortalDetected` via the type-1 IPC state message. Toggle: `FailoverSettings.captivePortalDetection` (default true).
+
 ## Testing
 
 - Simulator uses `MockTunnels` (see `Sources/WireGuardApp/Tunnel/MockTunnels.swift`)
