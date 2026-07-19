@@ -34,8 +34,8 @@ Layered, in increasing implementation size. Each phase is independently useful.
 | 1 | `probeURL` on on-demand Connect rules | `ActivateOnDemandOption.swift` | **Implemented** |
 | 2 | Captive-portal detector in the extension | `CaptivePortalDetector.swift` in WireGuardKit | **Implemented** |
 | 3 | Captive-aware `ConnectionHealthMonitor` | `ConnectionHealthMonitor.swift` | **Implemented** |
-| 4 | Surface state to the user | IPC type 1 + app UI | IPC keys **implemented**; UI planned |
-| 5 | Guided sign-in: notification + in-app portal browser | extension notification + app WKWebView sheet | Planned |
+| 4 | Surface state to the user | IPC type 1 + app UI | **Implemented** (iOS; macOS UI future work) |
+| 5 | Guided sign-in: notification + in-app portal browser | extension notification + app WKWebView sheet | **Implemented** (iOS) |
 
 ## Phase 1: `probeURL` on On-Demand Connect Rules (Implemented)
 
@@ -98,12 +98,13 @@ t=?     User authenticates. Next detector poll (≤15s) returns .clear →
         bump sockets → handshake on the same config → healthy.
 ```
 
-## Phase 4: Surfacing to the User (IPC implemented; UI planned)
+## Phase 4: Surfacing to the User (Implemented — iOS)
 
-- **Implemented:** the health monitor's state snapshot — merged into the IPC type 1 (failover state) response, which the app already polls every 2–5 s while visible — now carries `networkBlocked: Bool`, `captivePortalDetected: Bool`, and `networkBlockedSince: TimeInterval` while in the holding state.
-- **Planned:** UI reading those keys — show "This Wi-Fi network requires sign-in" on the tunnel/group detail and list views instead of a flapping status.
+- The health monitor's state snapshot — merged into the IPC type 1 (failover state) response, which the app already polls every 2–5 s while visible — carries `networkBlocked: Bool`, `captivePortalDetected: Bool`, and `networkBlockedSince: TimeInterval` while in the holding state.
+- `FailoverGroupDetailTableViewController` reads those keys: the active tunnel's per-row status shows **"Wi-Fi Sign-in Required"** (orange) or **"Waiting for Network"** (gray) while blocked, and the Active Connection section gains a **Network** row ("Captive portal — Wi-Fi requires sign-in (42s)" / "Offline — waiting to reconnect (42s)").
+- macOS UI equivalents are future work (the engine, IPC keys, and Phase 1 `probeURL` all apply to macOS already).
 
-## Phase 5: Guided Sign-In — Notification + In-App Portal Browser (Planned)
+## Phase 5: Guided Sign-In — Notification + In-App Portal Browser (Implemented — iOS)
 
 The interactive follow-up to Phase 4: when a portal appears mid-session, actively walk the user through signing in, instead of just reporting the state.
 
@@ -111,8 +112,9 @@ The interactive follow-up to Phase 4: when a portal appears mid-session, activel
 
 Network extensions can post local notifications, and this codebase already does — `PacketTunnelProvider` posts disconnect and failover notifications via `UNUserNotificationCenter` (authorization is requested by the app; per-type toggles live in `NotificationSettings`). Phase 5 reuses that pattern:
 
-- On `didDetectBlockedNetwork(.captive)`, post a "Wi-Fi network requires sign-in — tap to open" notification, gated by a new `NotificationSettings` toggle and debounced to once per blocked episode.
-- Give it a notification category (e.g. `CAPTIVE_PORTAL`) so the app's `UNUserNotificationCenterDelegate` can route the tap straight to the sign-in sheet. Tapping a notification always foregrounds the app; no special API needed.
+- On `didDetectBlockedNetwork(.captive)`, the provider posts a "Wi-Fi Network Requires Sign-In" notification, gated by `NotificationSettings.isCaptivePortalNotificationEnabled` (a "Wi-Fi sign-in alerts" toggle in Settings, default off like the other notification toggles, with the same permission-request flow).
+- The request uses the **stable identifier** `vpn-captive-portal`, so repeat detections replace the pending notification instead of stacking; the delegate fires once per blocked episode, plus once more if an `.offline` episode turns `.captive` (the monitor re-notifies on that transition — it means the user just joined portal Wi-Fi).
+- The content carries the `CAPTIVE_PORTAL` category (`NotificationSettings.captivePortalCategoryIdentifier`); `AppDelegate` is the `UNUserNotificationCenterDelegate`, registers the (action-less) category, shows banners in the foreground, and routes taps to `MainViewController.presentCaptivePortalSignIn()` — which defers via the existing `onTunnelsManagerReady` hook on cold launch.
 - Only `.captive` warrants a notification — `.offline` is not user-actionable.
 
 ### Is there built-in iOS functionality for the sign-in itself? Effectively no.
@@ -125,13 +127,14 @@ So the sign-in surface has to be ours: an in-app browser sheet.
 
 ### WKWebView, not SFSafariViewController
 
-`SFSafariViewController` is isolated by design — the app cannot observe navigation, inject the probe flow, or detect when sign-in completed, so the sheet would just sit there after auth. A `WKWebView` sheet can run the whole loop:
+`SFSafariViewController` is isolated by design — the app cannot observe navigation, inject the probe flow, or detect when sign-in completed, so the sheet would just sit there after auth. `CaptivePortalSignInViewController` (a `WKWebView` sheet) runs the whole loop:
 
-1. Load the probe URL (`CaptivePortalDetector.defaultProbeURL`); the portal redirect lands the user on the sign-in page.
-2. User authenticates (use a non-persistent `WKWebsiteDataStore`; portal credentials shouldn't outlive the sheet).
-3. The app re-probes with `CaptivePortalDetector` (WireGuardKit is compiled into the app targets, so the same class is available) until `.clear`, then auto-dismisses.
+1. Pause the active tunnel (see below), waiting up to 8 s for it to reach `.inactive`.
+2. Load the probe URL (`CaptivePortalDetector.defaultProbeURL`); the portal redirect lands the user on the sign-in page. Non-persistent `WKWebsiteDataStore` — portal credentials don't outlive the sheet.
+3. Re-probe with `CaptivePortalDetector` (WireGuardKit is compiled into the app targets, so the same class is available) every 3 s and after each finished navigation; on `.clear`, reactivate the paused tunnel and auto-dismiss.
+4. Done button or swipe-to-dismiss also reactivates the paused tunnel (exactly once, guarded).
 
-App-side `Info.plist` needs `NSAllowsArbitraryLoadsInWebContent` — the purpose-built ATS key that exempts *WKWebView content only* — since portal sign-in pages are arbitrary plain-HTTP hosts. The app also needs the `captive.apple.com` exception for its own re-probe requests.
+App-side `Info.plist` has `NSAllowsArbitraryLoadsInWebContent` — the purpose-built ATS key that exempts *WKWebView content only* — since portal sign-in pages are arbitrary plain-HTTP hosts, plus the `captive.apple.com` exception for the app's own re-probe requests.
 
 ### Ordering caveat, and a Phase 1 synergy
 
@@ -154,4 +157,6 @@ Unlike extension traffic, **the app's traffic routes through the tunnel**. The s
 - Real portals are easiest to simulate with a travel router or a Raspberry Pi running a captive portal (e.g. nodogsplash/openNDS), or a firewall rule that redirects port 80 and drops UDP.
 - Phase 1: join the portal network with on-demand enabled → tunnel must stay down and the sign-in sheet must load; after auth, tunnel must come up without user action. Verify rule round-tripping by re-opening the on-demand editor.
 - Phases 2–3: with `FAILOVER_TESTING` builds, verify no config cycling occurs behind a portal (health monitor logs `networkBlocked` instead of `switching to`), and that recovery lands on the config that was active before the portal appeared.
+- Phase 4: while blocked, the failover group detail view should show "Wi-Fi Sign-in Required" on the active tunnel row and a Network row in Active Connection; both disappear within one 2 s poll of the network clearing.
+- Phase 5: enable "Wi-Fi sign-in alerts" in Settings; with an active failover group, put the network behind a portal mid-session → a notification should arrive within ~`trafficTimeout` + one detector check; tapping it opens the sign-in sheet, which pauses the tunnel, shows the portal page, auto-dismisses after auth, and reactivates the tunnel.
 - Simulator caveat: uses `MockTunnels`; on-demand and NE behavior require a real device.

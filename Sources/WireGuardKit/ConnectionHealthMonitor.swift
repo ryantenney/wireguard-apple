@@ -496,9 +496,15 @@ public class ConnectionHealthMonitor {
                 if status == .clear {
                     self.exitNetworkBlocked()
                 } else {
+                    // An offline network turning captive is a fresh, user-actionable event
+                    // (e.g. the user just joined portal Wi-Fi) — re-notify the delegate.
+                    let becameCaptive = (self.networkBlockedStatus == .offline && status == .captive)
                     self.networkBlockedStatus = status
                     let elapsed = Int(Date().timeIntervalSince(blockedSince))
                     self.logHandler(.verbose, "Failover: underlying network still blocked (\(status == .captive ? "captive" : "offline"), \(elapsed)s)")
+                    if becameCaptive {
+                        self.delegate?.healthMonitor(self, didDetectBlockedNetwork: status)
+                    }
                 }
             }
         }

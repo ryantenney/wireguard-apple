@@ -9,6 +9,11 @@ struct NotificationSettings {
 
     private static let keyDisconnectNotifications = "notifyOnDisconnect"
     private static let keyFailoverNotifications = "notifyOnFailover"
+    private static let keyCaptivePortalNotifications = "notifyOnCaptivePortal"
+
+    /// Notification category identifier for captive-portal notifications. The app's
+    /// notification delegate routes taps on this category to the sign-in sheet.
+    static let captivePortalCategoryIdentifier = "CAPTIVE_PORTAL"
 
     private static var userDefaults: UserDefaults? {
         guard let appGroupId = FileManager.appGroupId else { return nil }
@@ -23,5 +28,10 @@ struct NotificationSettings {
     static var isFailoverNotificationEnabled: Bool {
         get { return userDefaults?.bool(forKey: keyFailoverNotifications) ?? false }
         set { userDefaults?.set(newValue, forKey: keyFailoverNotifications) }
+    }
+
+    static var isCaptivePortalNotificationEnabled: Bool {
+        get { return userDefaults?.bool(forKey: keyCaptivePortalNotifications) ?? false }
+        set { userDefaults?.set(newValue, forKey: keyCaptivePortalNotifications) }
     }
 }

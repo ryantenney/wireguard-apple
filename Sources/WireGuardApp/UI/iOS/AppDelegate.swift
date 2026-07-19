@@ -3,6 +3,7 @@
 // Copyright © 2026 Ryan Tenney.
 
 import UIKit
+import UserNotifications
 import os.log
 
 @UIApplicationMain
@@ -17,6 +18,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         Logger.configureGlobal(tagged: "APP", withFilePath: FileManager.logFileURL?.path)
 
         SpotlightIndexer.indexAppIfNeeded()
+
+        let notificationCenter = UNUserNotificationCenter.current()
+        notificationCenter.delegate = self
+        // No custom actions — the category exists so taps can be routed to the sign-in sheet.
+        let captivePortalCategory = UNNotificationCategory(
+            identifier: NotificationSettings.captivePortalCategoryIdentifier,
+            actions: [], intentIdentifiers: [])
+        notificationCenter.setNotificationCategories([captivePortalCategory])
 
         if let launchOptions = launchOptions {
             if launchOptions[.url] != nil || launchOptions[.shortcutItem] != nil {
@@ -68,6 +77,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         showTunnelsTab()
         mainVC?.showTunnelDetailForTunnel(named: tunnelName, animated: false, shouldToggleStatus: true)
         completionHandler(true)
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // Show extension-posted notifications even while the app is foregrounded.
+        completionHandler([.banner, .sound])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        if response.notification.request.content.categoryIdentifier == NotificationSettings.captivePortalCategoryIdentifier {
+            mainVC?.presentCaptivePortalSignIn()
+        }
+        completionHandler()
     }
 }
 

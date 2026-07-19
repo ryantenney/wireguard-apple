@@ -231,6 +231,7 @@
 "settingsSectionTitleNotifications" = "Notifications";
 "settingsNotifyOnDisconnect" = "Disconnect alerts";
 "settingsNotifyOnFailover" = "Failover alerts";
+"settingsNotifyOnCaptivePortal" = "Wi-Fi sign-in alerts";
 "settingsNotificationPermissionDeniedTitle" = "Notifications Disabled";
 "settingsNotificationPermissionDeniedMessage" = "Please enable notifications for WGnext in Settings to receive alerts.";
 

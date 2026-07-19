@@ -18,6 +18,7 @@ class SettingsTableViewController: UITableViewController {
         case sessionHistoryRecording
         case notifyOnDisconnect
         case notifyOnFailover
+        case notifyOnCaptivePortal
         case ipDiscovery
 
         var localizedUIString: String {
@@ -30,6 +31,7 @@ class SettingsTableViewController: UITableViewController {
             case .sessionHistoryRecording: return tr("settingsSessionHistoryRecording")
             case .notifyOnDisconnect: return tr("settingsNotifyOnDisconnect")
             case .notifyOnFailover: return tr("settingsNotifyOnFailover")
+            case .notifyOnCaptivePortal: return tr("settingsNotifyOnCaptivePortal")
             case .ipDiscovery: return tr("settingsIPDiscovery")
             }
         }
@@ -37,7 +39,7 @@ class SettingsTableViewController: UITableViewController {
 
     let settingsFieldsBySection: [[SettingsFields]] = [
         [.iosAppVersion, .goBackendVersion],
-        [.notifyOnDisconnect, .notifyOnFailover],
+        [.notifyOnDisconnect, .notifyOnFailover, .notifyOnCaptivePortal],
         [.ipDiscovery],
         [.exportZipArchive],
         [.viewLog],
@@ -161,6 +163,8 @@ class SettingsTableViewController: UITableViewController {
                         NotificationSettings.isDisconnectNotificationEnabled = true
                     case .notifyOnFailover:
                         NotificationSettings.isFailoverNotificationEnabled = true
+                    case .notifyOnCaptivePortal:
+                        NotificationSettings.isCaptivePortalNotificationEnabled = true
                     default:
                         break
                     }
@@ -181,6 +185,8 @@ class SettingsTableViewController: UITableViewController {
                 NotificationSettings.isDisconnectNotificationEnabled = false
             case .notifyOnFailover:
                 NotificationSettings.isFailoverNotificationEnabled = false
+            case .notifyOnCaptivePortal:
+                NotificationSettings.isCaptivePortalNotificationEnabled = false
             default:
                 break
             }
@@ -249,12 +255,17 @@ extension SettingsTableViewController {
                 SessionHistoryStore.isRecordingEnabled = isOn
             }
             return cell
-        } else if field == .notifyOnDisconnect || field == .notifyOnFailover {
+        } else if field == .notifyOnDisconnect || field == .notifyOnFailover || field == .notifyOnCaptivePortal {
             let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
             cell.message = field.localizedUIString
-            cell.isOn = (field == .notifyOnDisconnect)
-                ? NotificationSettings.isDisconnectNotificationEnabled
-                : NotificationSettings.isFailoverNotificationEnabled
+            switch field {
+            case .notifyOnDisconnect:
+                cell.isOn = NotificationSettings.isDisconnectNotificationEnabled
+            case .notifyOnFailover:
+                cell.isOn = NotificationSettings.isFailoverNotificationEnabled
+            default:
+                cell.isOn = NotificationSettings.isCaptivePortalNotificationEnabled
+            }
             cell.onSwitchToggled = { [weak self, weak cell] isOn in
                 guard let cell = cell else { return }
                 self?.handleNotificationToggle(field: field, isOn: isOn, switchCell: cell)

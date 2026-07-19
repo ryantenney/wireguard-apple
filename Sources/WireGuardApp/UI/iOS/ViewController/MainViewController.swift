@@ -101,6 +101,32 @@ extension MainViewController {
         }
     }
 
+    /// Present the captive-portal sign-in sheet (WKWebView flow). Invoked when the
+    /// user taps the extension's "Wi-Fi requires sign-in" notification.
+    func presentCaptivePortalSignIn() {
+        let presentBlock: (TunnelsManager) -> Void = { [weak self] tunnelsManager in
+            guard let self = self else { return }
+            // Already showing the sheet (e.g. repeat notification tap) — don't stack another.
+            var topVC: UIViewController = self
+            while let presented = topVC.presentedViewController {
+                if let navVC = presented as? UINavigationController,
+                   navVC.viewControllers.first is CaptivePortalSignInViewController {
+                    return
+                }
+                topVC = presented
+            }
+            let signInVC = CaptivePortalSignInViewController(tunnelsManager: tunnelsManager)
+            let signInNC = UINavigationController(rootViewController: signInVC)
+            signInNC.modalPresentationStyle = .pageSheet
+            topVC.present(signInNC, animated: true)
+        }
+        if let tunnelsManager = tunnelsManager {
+            presentBlock(tunnelsManager)
+        } else {
+            onTunnelsManagerReady = presentBlock
+        }
+    }
+
     func importFromDisposableFile(url: URL) {
         let importFromFileBlock: (TunnelsManager) -> Void = { [weak self] tunnelsManager in
             TunnelImporter.importFromFile(urls: [url], into: tunnelsManager, sourceVC: self, errorPresenterType: ErrorPresenter.self) {

@@ -4,6 +4,24 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Captive portal sign-in (DESIGN-captive-portal-handling.md, Phase 5):
+	     NSAllowsArbitraryLoadsInWebContent lets the WKWebView sign-in sheet load
+	     arbitrary plain-HTTP portal pages (WKWebView content only — the app's own
+	     connections stay ATS-protected). The captive.apple.com exception covers the
+	     app-side CaptivePortalDetector probe. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>captive.apple.com</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDocumentTypes</key>

@@ -37,6 +37,8 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
     private enum ConnectionStatus {
         case active
         case unhealthy
+        case signInRequired
+        case waitingForNetwork
         case hotSpareReady
         case hotSpareWaiting
         case probing
@@ -46,7 +48,8 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
             switch self {
             case .active, .hotSpareReady: return .systemGreen
             case .unhealthy, .hotSpareWaiting, .probing: return .systemYellow
-            case .idle: return .systemGray
+            case .signInRequired: return .systemOrange
+            case .waitingForNetwork, .idle: return .systemGray
             }
         }
 
@@ -54,6 +57,8 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
             switch self {
             case .active: return "Active"
             case .unhealthy: return "Unhealthy"
+            case .signInRequired: return "Wi-Fi Sign-in Required"
+            case .waitingForNetwork: return "Waiting for Network"
             case .hotSpareReady: return "Standby"
             case .hotSpareWaiting: return "Connecting"
             case .probing: return "Probing"
@@ -63,6 +68,7 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
     }
 
     private enum ActiveConnectionField {
+        case network
         case dataReceived
         case dataSent
         case lastHandshake
@@ -74,6 +80,7 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
 
         var localizedUIString: String {
             switch self {
+            case .network: return "Network"
             case .dataReceived: return tr("tunnelPeerRxBytes")
             case .dataSent: return tr("tunnelPeerTxBytes")
             case .lastHandshake: return tr("tunnelPeerLastHandshakeTime")
@@ -202,6 +209,7 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
 
     private func computeVisibleActiveConnectionFields(from state: [String: Any]) -> [ActiveConnectionField] {
         var fields = [ActiveConnectionField]()
+        if let blocked = state["networkBlocked"] as? Bool, blocked { fields.append(.network) }
         if let rx = state["rxBytes"] as? UInt64, rx > 0 { fields.append(.dataReceived) }
         if let tx = state["txBytes"] as? UInt64, tx > 0 { fields.append(.dataSent) }
         if state["lastHandshakeTime"] as? Double != nil { fields.append(.lastHandshake) }
@@ -220,6 +228,10 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
         let name = tunnelNames[index]
 
         if let activeName = activeConfigName, activeName == name {
+            if let blocked = state["networkBlocked"] as? Bool, blocked {
+                let isCaptive = state["captivePortalDetected"] as? Bool ?? false
+                return isCaptive ? .signInRequired : .waitingForNetwork
+            }
             if state["txWithoutRxSince"] as? Double != nil { return .unhealthy }
             return .active
         }
@@ -346,6 +358,14 @@ extension FailoverGroupDetailTableViewController {
     private func activeConnectionValue(for field: ActiveConnectionField) -> String {
         guard let state = failoverState else { return "" }
         switch field {
+        case .network:
+            let isCaptive = state["captivePortalDetected"] as? Bool ?? false
+            var text = isCaptive ? "Captive portal — Wi-Fi requires sign-in" : "Offline — waiting to reconnect"
+            if let since = state["networkBlockedSince"] as? Double {
+                let duration = Int(Date().timeIntervalSince1970 - since)
+                text += " (\(duration)s)"
+            }
+            return text
         case .dataReceived:
             if let rx = state["rxBytes"] as? UInt64 { return FormattingHelpers.prettyBytes(rx) }
             return ""

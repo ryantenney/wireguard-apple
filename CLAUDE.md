@@ -157,6 +157,8 @@ The iOS app root is `RootTabBarController` (`Sources/WireGuardApp/UI/iOS/RootTab
 
 See `DESIGN-captive-portal-handling.md`. On-demand Connect rules carry a captive-check `probeURL` so on-demand doesn't block portal sign-in. `Sources/WireGuardKit/CaptivePortalDetector.swift` probes the underlying network from the extension (provider-process traffic bypasses the utun). When the underlying network is captive/offline, `ConnectionHealthMonitor` enters a `networkBlocked` holding state (no config cycling, probes suspended, detector polled) instead of failing over, and reports `networkBlocked`/`captivePortalDetected` via the type-1 IPC state message. Toggle: `FailoverSettings.captivePortalDetection` (default true).
 
+On iOS, captive detection posts a `CAPTIVE_PORTAL`-category local notification (opt-in "Wi-Fi sign-in alerts" toggle); tapping it opens `CaptivePortalSignInViewController`, a WKWebView sheet that pauses the tunnel, lets the user sign in to the portal, and reactivates on success/dismissal. The failover group detail view shows blocked-network status rows. macOS UI is future work.
+
 ## Testing
 
 - Simulator uses `MockTunnels` (see `Sources/WireGuardApp/Tunnel/MockTunnels.swift`)

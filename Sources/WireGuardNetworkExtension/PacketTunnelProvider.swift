@@ -685,6 +685,25 @@ extension PacketTunnelProvider {
             }
         }
     }
+
+    func postCaptivePortalNotificationIfEnabled() {
+        guard NotificationSettings.isCaptivePortalNotificationEnabled else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Wi-Fi Network Requires Sign-In"
+        content.body = "A captive portal is blocking the VPN. Tap to sign in to the network."
+        content.sound = .default
+        content.categoryIdentifier = NotificationSettings.captivePortalCategoryIdentifier
+
+        // Stable identifier: a repeat detection replaces the pending notification
+        // instead of stacking a new one per blocked episode.
+        let request = UNNotificationRequest(identifier: "vpn-captive-portal", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                wg_log(.error, message: "Failed to post captive portal notification: \(error.localizedDescription)")
+            }
+        }
+    }
 }
 #endif
 
@@ -723,6 +742,11 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectBlockedNetwork status: UnderlyingNetworkStatus) {
         let reason = (status == .captive) ? "captive portal" : "offline"
         wg_log(.info, message: "Failover: underlying network blocked (\(reason)) — failover paused")
+        #if os(iOS)
+        if status == .captive {
+            postCaptivePortalNotificationIfEnabled()
+        }
+        #endif
     }
 
     func healthMonitorDidClearBlockedNetwork(_ monitor: ConnectionHealthMonitor) {
