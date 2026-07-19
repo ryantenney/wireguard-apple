@@ -18,6 +18,15 @@ private let nonWiFiInterfaceType: NEOnDemandRuleInterfaceType = .ethernet
 #error("Unimplemented")
 #endif
 
+/// A Connect rule with `probeURL` set only matches if the system can fetch the URL
+/// and receive a 200 without redirection. On a captive-portal network the portal
+/// intercepts the request, so on-demand holds off until the user has signed in —
+/// otherwise the tunnel claims the default route and blackholes the sign-in flow.
+/// Must be plain HTTP so the portal can intercept it; the fetch is performed by the
+/// system's on-demand evaluator, so App Transport Security does not apply.
+/// See DESIGN-captive-portal-handling.md.
+private let captivePortalProbeURL = URL(string: "http://captive.apple.com/hotspot-detect.html")!
+
 enum ActivateOnDemandSSIDOption: Equatable {
     case anySSID
     case onlySpecificSSIDs([String])
@@ -107,6 +116,7 @@ private extension NEOnDemandRuleConnect {
         self.init()
         interfaceTypeMatch = interfaceType
         ssidMatch = ssids
+        probeURL = captivePortalProbeURL
     }
 }
 
