@@ -125,6 +125,15 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Localized</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location access is used to record where speed tests were run and to read the current Wi-Fi network name.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Local network access is used to run speed tests against servers on your network.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>app.wgnext.ios.app_group_id</key>
 	<string>group.$(APP_ID_IOS)</string>
 </dict>

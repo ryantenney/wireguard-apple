@@ -135,6 +135,24 @@ See `DESIGN-background-probes-and-hot-spares.md` for full documentation.
 ### Debug Testing
 Build with `FAILOVER_TESTING` flag (`fastlane ios device_failover`) to get Force Failover/Failback buttons in the detail view. All debug code is `#if FAILOVER_TESTING` gated.
 
+## Speed Test (iOS)
+
+The iOS app root is `RootTabBarController` (`Sources/WireGuardApp/UI/iOS/RootTabBarController.swift`), a tab bar wrapping the original `MainViewController` split view (Tunnels tab) plus a Speed Test tab.
+
+### Key Files
+- `Sources/WireGuardApp/SpeedTest/` — engine layer, iOS app target only (see `project.yml`):
+  - `Iperf3Client.swift` — pure-Swift iperf3 TCP client (Network framework). Control channel state machine, cookie, length-prefixed JSON params/results, parallel data streams. Upload/download (`reverse`)/bidir (`bidirectional`; senders connect first to match server accept order).
+  - `HTTPSpeedTestClient.swift` — OpenSpeedTest-style HTTP test (URLSession, parallel GET/POST, configurable paths, defaults `/downloading` + `/upload`).
+  - `SpeedTestEngine.swift` — orchestrates a run, persists results.
+  - `SpeedTestMetadataCollector.swift` — best-effort capture of network type, Wi-Fi SSID (NEHotspotNetwork), carrier + radio tech (CoreTelephony), one-shot reverse-geocoded location (CoreLocation).
+  - `SpeedTestServerStore.swift` / `SpeedTestResultsStore.swift` — JSON persistence in app group container; server list seeded with public iperf3 servers.
+- UI: `SpeedTestViewController` (tab root), server list/editor, results history/detail under `Sources/WireGuardApp/UI/iOS/ViewController/SpeedTest*`.
+
+### Notes
+- Results record which VPN tunnel (if any) was active, via `activeTunnelNameProvider` wired in `RootTabBarController`.
+- iOS `Info.plist` gained `NSLocationWhenInUseUsageDescription`, `NSLocalNetworkUsageDescription`, and ATS `NSAllowsArbitraryLoads` (user-entered plain-HTTP speed test servers).
+- No macOS UI for this feature yet; the `SpeedTest/` sources are not in the macOS target.
+
 ## Testing
 
 - Simulator uses `MockTunnels` (see `Sources/WireGuardApp/Tunnel/MockTunnels.swift`)

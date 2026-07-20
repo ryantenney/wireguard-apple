@@ -9,6 +9,7 @@ import os.log
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+    var rootTabBarVC: RootTabBarController?
     var mainVC: MainViewController?
     var isLaunchedForSpecificAction = false
 
@@ -26,18 +27,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let window = UIWindow(frame: UIScreen.main.bounds)
         self.window = window
 
-        let mainVC = MainViewController()
-        window.rootViewController = mainVC
+        let rootTabBarVC = RootTabBarController()
+        window.rootViewController = rootTabBarVC
         window.makeKeyAndVisible()
 
-        self.mainVC = mainVC
+        self.rootTabBarVC = rootTabBarVC
+        self.mainVC = rootTabBarVC.mainVC
 
         return true
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        showTunnelsTab()
         mainVC?.importFromDisposableFile(url: url)
         return true
+    }
+
+    private func showTunnelsTab() {
+        if let rootTabBarVC = rootTabBarVC {
+            rootTabBarVC.selectedViewController = rootTabBarVC.mainVC
+        }
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
@@ -56,6 +65,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return
         }
         let tunnelName = shortcutItem.localizedTitle
+        showTunnelsTab()
         mainVC?.showTunnelDetailForTunnel(named: tunnelName, animated: false, shouldToggleStatus: true)
         completionHandler(true)
     }

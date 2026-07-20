@@ -245,6 +245,7 @@ targets:
           - WireGuardResult.swift
           - "*.lproj/**"
       - path: Sources/WireGuardApp/Tunnel
+      - path: Sources/WireGuardApp/SpeedTest
       - path: Sources/WireGuardApp/ZipArchive
       - path: Sources/WireGuardApp/UI
         excludes:

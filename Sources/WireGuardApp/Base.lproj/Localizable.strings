@@ -531,3 +531,107 @@
 // Donation
 
 "donateLink" = "♥ Donate to the WireGuard Project";
+
+// Tab bar
+
+"tabTitleTunnels" = "Tunnels";
+"tabTitleSpeedTest" = "Speed Test";
+
+// Speed test
+
+"speedTestViewTitle" = "Speed Test";
+"speedTestSectionTitleConfiguration" = "Configuration";
+"speedTestSectionTitleTest" = "Test";
+"speedTestSectionTitleResults" = "Results";
+"speedTestFieldServer" = "Server";
+"speedTestFieldDirection" = "Direction";
+"speedTestFieldDuration" = "Duration";
+"speedTestNoServerSelected" = "None";
+"speedTestDirectionDownload" = "Download";
+"speedTestDirectionUpload" = "Upload";
+"speedTestDirectionBidirectional" = "Bidirectional";
+"speedTestDurationValue (%d)" = "%d seconds";
+"speedTestStartButtonTitle" = "Start Test";
+"speedTestStopButtonTitle" = "Stop Test";
+"speedTestDownloadLabel" = "Download";
+"speedTestUploadLabel" = "Upload";
+"speedTestStatusIdle" = "Ready";
+"speedTestStatusConnecting" = "Connecting…";
+"speedTestStatusRunning (%d) (%d)" = "Running… %d of %d seconds";
+"speedTestStatusDone" = "Test complete — saved to history";
+"speedTestHistoryButtonTitle" = "Test History";
+
+// Speed test server kinds
+
+"speedTestServerKindIperf3" = "iperf3";
+"speedTestServerKindOpenSpeedTest" = "OpenSpeedTest (HTTP)";
+
+// Speed test server list
+
+"speedTestServersViewTitle" = "Servers";
+"speedTestServersSelectFooter" = "Tap a server to select it. Use Edit to modify or delete servers.";
+"speedTestServersEmptyFooter" = "No servers configured. Add one with the + button or restore the built-in public servers below.";
+"speedTestServersPublicFooter" = "Built-in servers are public third-party iperf3 servers. They may be busy (iperf3 serves one test at a time) or become unavailable over time.";
+"speedTestRestoreBuiltInServers" = "Restore Built-in Public Servers";
+
+// Speed test server editor
+
+"speedTestAddServerViewTitle" = "Add Server";
+"speedTestEditServerViewTitle" = "Edit Server";
+"speedTestEditSectionName" = "Name";
+"speedTestEditSectionKind" = "Type";
+"speedTestEditSectionEndpoint" = "Endpoint";
+"speedTestEditSectionHTTPOptions" = "HTTP Options";
+"speedTestEditPlaceholderName" = "My speed test server";
+"speedTestEditPlaceholderHost" = "Hostname or IP address";
+"speedTestEditPlaceholderPort" = "Port";
+"speedTestEditFieldUseTLS" = "Use HTTPS";
+"speedTestEditPlaceholderDownloadPath" = "Download path (e.g. /downloading)";
+"speedTestEditPlaceholderUploadPath" = "Upload path (e.g. /upload)";
+"speedTestAlertInvalidServerTitle" = "Invalid server";
+"speedTestAlertNameEmpty" = "Name is required.";
+"speedTestAlertHostInvalid" = "A valid hostname or IP address is required.";
+"speedTestAlertPortInvalid" = "Port must be a number between 1 and 65535.";
+
+// Speed test alerts and errors
+
+"speedTestAlertNoServerTitle" = "No server selected";
+"speedTestAlertNoServerMessage" = "Select or add a speed test server first.";
+"speedTestAlertTestFailedTitle" = "Speed test failed";
+"speedTestErrorInvalidEndpoint" = "The server address is invalid.";
+"speedTestErrorConnectionFailed (%@)" = "Could not connect to the server: %@";
+"speedTestErrorServerBusy" = "The server is busy running another test. Try again in a moment.";
+"speedTestErrorProtocol (%@)" = "The test failed: %@";
+"speedTestErrorTimedOut" = "The test timed out.";
+"speedTestErrorCancelled" = "The test was cancelled.";
+
+// Speed test history
+
+"speedTestHistoryViewTitle" = "Test History";
+"speedTestHistoryClearButtonTitle" = "Clear";
+"speedTestHistoryClearConfirmTitle" = "Clear test history?";
+"speedTestHistoryClearConfirmMessage" = "All saved speed test results will be deleted.";
+"speedTestHistoryEmptyMessage" = "No speed test results yet";
+
+// Speed test result detail
+
+"speedTestResultDetailViewTitle" = "Test Result";
+"speedTestResultFieldDate" = "Date";
+"speedTestResultFieldServer" = "Server";
+"speedTestResultFieldEndpoint" = "Endpoint";
+"speedTestResultFieldKind" = "Type";
+"speedTestResultFieldDirection" = "Direction";
+"speedTestResultFieldDuration" = "Duration";
+"speedTestResultFieldDownload" = "Download";
+"speedTestResultFieldUpload" = "Upload";
+"speedTestResultFieldDownloadedData" = "Data downloaded";
+"speedTestResultFieldUploadedData" = "Data uploaded";
+"speedTestResultFieldNetworkType" = "Network";
+"speedTestResultFieldWifiSSID" = "Wi-Fi network";
+"speedTestResultFieldCarrier" = "Carrier";
+"speedTestResultFieldRadio" = "Cellular radio";
+"speedTestResultFieldLocation" = "Location";
+"speedTestResultFieldVPNTunnel" = "VPN tunnel";
+"speedTestResultValueNone" = "None";
+"speedTestResultValueUnknown" = "Unknown";
+"speedTestResultDeleteButtonTitle" = "Delete result";
