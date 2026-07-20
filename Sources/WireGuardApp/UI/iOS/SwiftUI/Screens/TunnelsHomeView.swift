@@ -13,7 +13,7 @@ struct TunnelsHomeView: View {
     @EnvironmentObject var theme: AppTheme
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             Palette.screenBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -28,12 +28,8 @@ struct TunnelsHomeView: View {
                     }
                 }
                 .padding(.horizontal, 18)
-                .padding(.bottom, 96)
+                .padding(.bottom, 24)
             }
-            BottomTabBar(selected: .tunnels,
-                         accent: theme.accent.color,
-                         onSelectTunnels: {},
-                         onSelectSettings: { router.showSettings() })
         }
         .onAppear { store.beginHomePolling() }
         .onDisappear { store.endHomePolling() }

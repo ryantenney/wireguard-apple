@@ -17,7 +17,7 @@ struct SettingsView: View {
     @State private var defaultSensitivity = FailoverDefaults.sensitivity
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             Palette.screenBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -34,12 +34,8 @@ struct SettingsView: View {
                     aboutSection
                 }
                 .padding(.horizontal, 18)
-                .padding(.bottom, 96)
+                .padding(.bottom, 24)
             }
-            BottomTabBar(selected: .settings,
-                         accent: theme.accent.color,
-                         onSelectTunnels: { router.popToHome() },
-                         onSelectSettings: {})
         }
     }
 

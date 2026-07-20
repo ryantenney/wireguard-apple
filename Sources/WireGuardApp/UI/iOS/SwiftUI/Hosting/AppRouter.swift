@@ -16,6 +16,9 @@ final class AppRouter: NSObject, ObservableObject {
 
     weak var hostController: UIViewController?
     weak var splitViewController: UISplitViewController?
+    /// Navigation controller of the Settings tab; Settings-originated pushes
+    /// (log, session history) land here so they stay on the Settings tab.
+    weak var settingsNavigationController: UINavigationController?
 
     init(theme: AppTheme) {
         self.theme = theme
@@ -39,12 +42,6 @@ final class AppRouter: NSObject, ObservableObject {
         let controller = ThemedHostingController(rootView: AnyView(wrap(view)))
         controller.hidesNavigationBar = false
         controller.navigationItem.title = title
-        return controller
-    }
-
-    private func makeFullScreenHost<Content: View>(_ view: Content) -> ThemedHostingController {
-        let controller = ThemedHostingController(rootView: AnyView(wrap(view)))
-        controller.hidesNavigationBar = true
         return controller
     }
 
@@ -84,15 +81,6 @@ final class AppRouter: NSObject, ObservableObject {
         push(host)
     }
 
-    func showSettings() {
-        let host = makeFullScreenHost(SettingsView())
-        masterNavigationController?.pushViewController(host, animated: true)
-    }
-
-    func popToHome() {
-        masterNavigationController?.popToRootViewController(animated: true)
-    }
-
     func dismissDetail() {
         if let split = splitViewController, !split.isCollapsed {
             let empty = UIViewController()
@@ -114,8 +102,34 @@ final class AppRouter: NSObject, ObservableObject {
     }
 
     private func present(_ viewController: UIViewController) {
-        let presenter = masterNavigationController?.topViewController ?? hostController
+        let presenter = visibleTopViewController ?? masterNavigationController?.topViewController ?? hostController
         presenter?.present(viewController, animated: true)
+    }
+
+    /// The view controller currently on screen, regardless of which tab is
+    /// selected, so modals present from the visible tab (e.g. exporting from
+    /// the Settings tab) rather than an off-screen one.
+    private var visibleTopViewController: UIViewController? {
+        let window = hostController?.view.window ?? settingsNavigationController?.view.window
+        guard let root = window?.rootViewController else { return nil }
+        return AppRouter.topMost(of: root)
+    }
+
+    private static func topMost(of viewController: UIViewController) -> UIViewController {
+        if let presented = viewController.presentedViewController {
+            return topMost(of: presented)
+        }
+        switch viewController {
+        case let tab as UITabBarController:
+            if let selected = tab.selectedViewController { return topMost(of: selected) }
+        case let navigation as UINavigationController:
+            if let top = navigation.topViewController { return topMost(of: top) }
+        case let split as UISplitViewController:
+            if let last = split.viewControllers.last { return topMost(of: last) }
+        default:
+            break
+        }
+        return viewController
     }
 
     // MARK: - Add tunnel routes
@@ -298,11 +312,19 @@ final class AppRouter: NSObject, ObservableObject {
     }
 
     func viewLog() {
-        masterNavigationController?.pushViewController(LogViewController(), animated: true)
+        pushOnSettings(LogViewController())
     }
 
     func showSessionHistory() {
-        masterNavigationController?.pushViewController(SessionHistoryViewController(), animated: true)
+        pushOnSettings(SessionHistoryViewController())
+    }
+
+    /// Push a UIKit screen onto the Settings tab, restoring its navigation bar
+    /// (the Settings root hides it to draw its own large title).
+    private func pushOnSettings(_ viewController: UIViewController) {
+        let navigation = settingsNavigationController ?? masterNavigationController
+        navigation?.setNavigationBarHidden(false, animated: false)
+        navigation?.pushViewController(viewController, animated: true)
     }
 
     // MARK: - Helpers
