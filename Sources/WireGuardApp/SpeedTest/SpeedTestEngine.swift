@@ -45,7 +45,14 @@ final class SpeedTestEngine {
             self?.networkContext = context
         }
 
-        let finish: (Int64, Int64, Double) -> Void = { [weak self] downloadBytes, uploadBytes, duration in
+        let fail: (String) -> Void = { [weak self] message in
+            guard let self = self else { return }
+            self.isRunning = false
+            completion(.failure(SpeedTestError(message: message)))
+        }
+
+        // Build the combined result from whichever phases ran, and persist it.
+        let store: (_ download: (bytes: Int64, duration: Double)?, _ upload: (bytes: Int64, duration: Double)?) -> Void = { [weak self] download, upload in
             guard let self = self else { return }
             self.isRunning = false
             let context = self.networkContext ?? SpeedTestNetworkContext()
@@ -57,7 +64,7 @@ final class SpeedTestEngine {
                 serverKind: server.kind,
                 direction: direction,
                 requestedDurationSeconds: durationSeconds,
-                actualDurationSeconds: duration,
+                actualDurationSeconds: (download?.duration ?? 0) + (upload?.duration ?? 0),
                 downloadMbps: nil,
                 uploadMbps: nil,
                 downloadBytes: nil,
@@ -71,24 +78,72 @@ final class SpeedTestEngine {
                 longitude: context.longitude,
                 activeTunnelName: activeTunnelName
             )
-            if direction != .upload {
-                result.downloadBytes = downloadBytes
-                result.downloadMbps = duration > 0 ? Double(downloadBytes) * 8 / duration / 1_000_000 : 0
+            if let download = download {
+                result.downloadBytes = download.bytes
+                result.downloadMbps = download.duration > 0 ? Double(download.bytes) * 8 / download.duration / 1_000_000 : 0
             }
-            if direction != .download {
-                result.uploadBytes = uploadBytes
-                result.uploadMbps = duration > 0 ? Double(uploadBytes) * 8 / duration / 1_000_000 : 0
+            if let upload = upload {
+                result.uploadBytes = upload.bytes
+                result.uploadMbps = upload.duration > 0 ? Double(upload.bytes) * 8 / upload.duration / 1_000_000 : 0
             }
             SpeedTestResultsStore.append(result)
             completion(.success(result))
         }
 
-        let fail: (String) -> Void = { [weak self] message in
-            guard let self = self else { return }
-            self.isRunning = false
-            completion(.failure(SpeedTestError(message: message)))
+        switch direction {
+        case .download:
+            runPhase(server: server, direction: .download, durationSeconds: durationSeconds, onProgress: onProgress) { result in
+                switch result {
+                case .failure(let error): fail(error.message)
+                case .success(let phase): store((bytes: phase.down, duration: phase.dur), nil)
+                }
+            }
+        case .upload:
+            runPhase(server: server, direction: .upload, durationSeconds: durationSeconds, onProgress: onProgress) { result in
+                switch result {
+                case .failure(let error): fail(error.message)
+                case .success(let phase): store(nil, (bytes: phase.up, duration: phase.dur))
+                }
+            }
+        case .bidirectional:
+            // Run download first, then upload — two standard uni-directional
+            // tests — so we never use iperf3's fragile concurrent bidirectional
+            // mode (which resets data streams on many public servers).
+            runPhase(server: server, direction: .download, durationSeconds: durationSeconds, onProgress: { progress in
+                onProgress(SpeedTestProgress(elapsedSeconds: progress.elapsedSeconds, totalSeconds: progress.totalSeconds, downloadMbps: progress.downloadMbps, uploadMbps: nil))
+            }) { [weak self] downloadResult in
+                guard let self = self else { return }
+                switch downloadResult {
+                case .failure(let error):
+                    fail(error.message)
+                case .success(let downloadPhase):
+                    if self.wasCancelled {
+                        fail(tr("speedTestErrorCancelled"))
+                        return
+                    }
+                    let downloadMbps = downloadPhase.dur > 0 ? Double(downloadPhase.down) * 8 / downloadPhase.dur / 1_000_000 : 0
+                    self.runPhase(server: server, direction: .upload, durationSeconds: durationSeconds, onProgress: { progress in
+                        // Carry the finished download figure so the UI shows both.
+                        onProgress(SpeedTestProgress(elapsedSeconds: progress.elapsedSeconds, totalSeconds: progress.totalSeconds, downloadMbps: downloadMbps, uploadMbps: progress.uploadMbps))
+                    }) { uploadResult in
+                        switch uploadResult {
+                        case .failure(let error): fail(error.message)
+                        case .success(let uploadPhase):
+                            store((bytes: downloadPhase.down, duration: downloadPhase.dur), (bytes: uploadPhase.up, duration: uploadPhase.dur))
+                        }
+                    }
+                }
+            }
         }
+    }
 
+    /// Runs a single-direction test with the right client for the server kind,
+    /// reporting its byte totals and measured duration.
+    private func runPhase(server: SpeedTestServer,
+                          direction: SpeedTestDirection,
+                          durationSeconds: Int,
+                          onProgress: @escaping (SpeedTestProgress) -> Void,
+                          completion: @escaping (Result<(down: Int64, up: Int64, dur: Double), SpeedTestError>) -> Void) {
         switch server.kind {
         case .iperf3:
             let client = Iperf3Client(configuration: Iperf3Client.Configuration(
@@ -102,9 +157,9 @@ final class SpeedTestEngine {
                 self?.iperfClient = nil
                 switch result {
                 case .success(let summary):
-                    finish(summary.downloadBytes, summary.uploadBytes, summary.durationSeconds)
+                    completion(.success((down: summary.downloadBytes, up: summary.uploadBytes, dur: summary.durationSeconds)))
                 case .failure(let error):
-                    fail(SpeedTestEngine.message(forIperfError: error))
+                    completion(.failure(SpeedTestError(message: SpeedTestEngine.message(forIperfError: error))))
                 }
             })
         case .openSpeedTest:
@@ -118,9 +173,9 @@ final class SpeedTestEngine {
                 self?.httpClient = nil
                 switch result {
                 case .success(let summary):
-                    finish(summary.downloadBytes, summary.uploadBytes, summary.durationSeconds)
+                    completion(.success((down: summary.downloadBytes, up: summary.uploadBytes, dur: summary.durationSeconds)))
                 case .failure(let error):
-                    fail(SpeedTestEngine.message(forHTTPError: error))
+                    completion(.failure(SpeedTestError(message: SpeedTestEngine.message(forHTTPError: error))))
                 }
             })
         }

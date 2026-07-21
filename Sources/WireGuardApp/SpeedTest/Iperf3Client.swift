@@ -183,11 +183,13 @@ final class Iperf3Client {
         controlConnection?.receive(minimumIncompleteLength: 1, maximumLength: 1) { [weak self] data, _, isComplete, error in
             guard let self = self, !self.isFinished else { return }
             if let error = error {
+                if self.finishSuccessfullyIfMeasured() { return }
                 self.finish(with: .failure(.protocolError("Control channel error: \(error.localizedDescription)")))
                 return
             }
             guard let byte = data?.first else {
                 if isComplete {
+                    if self.finishSuccessfullyIfMeasured() { return }
                     self.finish(with: .failure(.protocolError("Control connection closed by server")))
                 }
                 return
@@ -485,6 +487,7 @@ final class Iperf3Client {
         connection.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] data, _, _, error in
             guard let self = self, !self.isFinished else { return }
             guard error == nil, let data = data, data.count == 4 else {
+                if self.finishSuccessfullyIfMeasured() { return }
                 self.finish(with: .failure(.protocolError("Failed to read results length")))
                 return
             }
@@ -546,6 +549,23 @@ final class Iperf3Client {
             uploadBytes: serverReportedUploadBytes ?? totalBytes(sender: true),
             durationSeconds: measuredDuration > 0 ? measuredDuration : Double(configuration.durationSeconds)
         )
+    }
+
+    /// True once the data transfer produced a usable measurement.
+    private var hasUsableMeasurement: Bool {
+        return measuredDuration > 0 && (totalBytes(sender: false) > 0 || totalBytes(sender: true) > 0)
+    }
+
+    /// The transfer completed and was measured, so a failure during the
+    /// post-transfer results handshake (server closing the control channel,
+    /// a reset, a short read) must not discard the result. The client's own
+    /// byte counters are authoritative for download; the server's results only
+    /// refine the upload byte count. Returns true if it finished the run.
+    @discardableResult
+    private func finishSuccessfullyIfMeasured() -> Bool {
+        guard isStopped, hasUsableMeasurement else { return false }
+        finish(with: .success(makeSummary()))
+        return true
     }
 
     private func finish(with result: Result<Summary, ClientError>) {

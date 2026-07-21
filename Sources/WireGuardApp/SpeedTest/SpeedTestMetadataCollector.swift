@@ -107,13 +107,18 @@ final class SpeedTestMetadataCollector: NSObject {
         monitor.start(queue: DispatchQueue(label: "SpeedTest.PathMonitor"))
     }
 
-    private func pathUsesType(_ path: NWPath, _ type: NWInterface.InterfaceType) -> Bool {
+    private func pathUsesType(_ path: Network.NWPath, _ type: NWInterface.InterfaceType) -> Bool {
         return path.usesInterfaceType(type) || path.availableInterfaces.contains { $0.type == type }
     }
 
     // MARK: - Wi-Fi SSID
 
     private func collectWifiSSID() {
+#if targetEnvironment(simulator)
+        // The simulator has no Wi-Fi information service, so fetchCurrent always
+        // fails with "nehelper sent invalid result code [5]". Skip it cleanly.
+        context.wifiSSID = nil
+#else
         group.enter()
         NEHotspotNetwork.fetchCurrent { [weak self] network in
             DispatchQueue.main.async {
@@ -121,6 +126,7 @@ final class SpeedTestMetadataCollector: NSObject {
                 self?.group.leave()
             }
         }
+#endif
     }
 
     // MARK: - Cellular

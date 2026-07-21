@@ -33,7 +33,7 @@ class SpeedTestViewController: UITableViewController {
     private static let durationKey = "speedTestDuration"
 
     private var selectedServer: SpeedTestServer?
-    private var direction: SpeedTestDirection = .download
+    private var direction: SpeedTestDirection = .bidirectional
     private var durationSeconds = 10
 
     private let engine = SpeedTestEngine.shared

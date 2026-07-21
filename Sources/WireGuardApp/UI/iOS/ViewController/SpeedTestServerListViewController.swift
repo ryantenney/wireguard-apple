@@ -4,8 +4,8 @@
 import UIKit
 
 /// Manages the saved speed test server list: tap to select, edit mode to
-/// modify or delete, + to add, and a button to restore the built-in public
-/// iperf3 servers.
+/// modify or delete, and + to add. There are no built-in servers — the user
+/// adds their own iperf3 or OpenSpeedTest server.
 class SpeedTestServerListViewController: UITableViewController {
 
     private var servers = [SpeedTestServer]()
@@ -32,7 +32,6 @@ class SpeedTestServerListViewController: UITableViewController {
         tableView.estimatedRowHeight = 44
         tableView.rowHeight = UITableView.automaticDimension
         tableView.register(SpeedTestServerCell.self)
-        tableView.register(ButtonCell.self)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -69,34 +68,18 @@ class SpeedTestServerListViewController: UITableViewController {
     // MARK: - Table view data source
 
     override func numberOfSections(in tableView: UITableView) -> Int {
-        return 2
+        return 1
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return section == 0 ? servers.count : 1
+        return servers.count
     }
 
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        switch section {
-        case 0:
-            return servers.isEmpty ? tr("speedTestServersEmptyFooter") : tr("speedTestServersSelectFooter")
-        case 1:
-            return tr("speedTestServersPublicFooter")
-        default:
-            return nil
-        }
+        return servers.isEmpty ? tr("speedTestServersEmptyFooter") : tr("speedTestServersSelectFooter")
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if indexPath.section == 1 {
-            let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
-            cell.buttonText = tr("speedTestRestoreBuiltInServers")
-            cell.onTapped = { [weak self] in
-                SpeedTestServerStore.restoreBuiltInServers()
-                self?.reload()
-            }
-            return cell
-        }
         let cell: SpeedTestServerCell = tableView.dequeueReusableCell(for: indexPath)
         let server = servers[indexPath.row]
         cell.name = server.name
