@@ -282,7 +282,7 @@ targets:
       - name: Strip Trailing Whitespace
         basedOnDependencyAnalysis: false
         script: |
-          find . -name '*.swift' -exec sed -i'' -E 's/[[:space:]]+$//g' {} +
+          find . -name '*.swift' -exec perl -i -pe 's/[ \t]+$//' {} +
       - name: SwiftLint
         basedOnDependencyAnalysis: false
         script: |
@@ -421,7 +421,7 @@ targets:
       - name: Strip Trailing Whitespace
         basedOnDependencyAnalysis: false
         script: |
-          find . -name '*.swift' -exec sed -i'' -E 's/[[:space:]]+$//g' {} +
+          find . -name '*.swift' -exec perl -i -pe 's/[ \t]+$//' {} +
       - name: SwiftLint
         basedOnDependencyAnalysis: false
         script: |
