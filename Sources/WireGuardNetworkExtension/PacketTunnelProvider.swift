@@ -124,8 +124,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // `docs/probe-routing-bypass.md`.
         let excludedEndpoints = Self.failoverSiblingEndpoints(configs: failoverConfigs, activeIndex: 0)
 
+        // Warm spare cellular failover: single-config tunnels only. Failover
+        // groups have their own path machinery (ConnectionHealthMonitor) and
+        // the warm spare interplay with config switching is not designed yet.
+        var warmSpareSettings: WarmSpareSettings?
+        if failoverConfigs.count <= 1,
+           let settingsData = providerConfig?["WarmSpareSettings"] as? Data,
+           let decoded = try? JSONDecoder().decode(WarmSpareSettings.self, from: settingsData) {
+            if decoded.enabled {
+                warmSpareSettings = decoded
+                wg_log(.info, message: "Warm spare: enabled (adaptive=\(decoded.adaptiveWarming), probePort=\(decoded.probePort))")
+            }
+        } else if failoverConfigs.count > 1, providerConfig?["WarmSpareSettings"] != nil {
+            wg_log(.info, message: "Warm spare: configured but ignored for failover groups")
+        }
+
         // Start the tunnel
-        adapter.start(tunnelConfiguration: tunnelConfiguration, excludedEndpoints: excludedEndpoints) { adapterError in
+        adapter.start(tunnelConfiguration: tunnelConfiguration, excludedEndpoints: excludedEndpoints, warmSpareSettings: warmSpareSettings) { adapterError in
             guard let adapterError = adapterError else {
                 wg_log(.info, message: "Tunnel interface is \(self.adapter.interfaceName ?? "unknown")")
                 self.startHealthMonitorIfNeeded(providerConfig: providerConfig)
@@ -266,6 +281,42 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 let result: [String: Any] = ["success": success]
                 completionHandler(try? JSONSerialization.data(withJSONObject: result))
             }
+        #endif
+
+        case 5:
+            // Warm spare: get merged status (Go bridge stats + path controller state)
+            adapter.getWarmSpareStatus { status in
+                guard let status = status else {
+                    completionHandler(nil)
+                    return
+                }
+                completionHandler(try? JSONSerialization.data(withJSONObject: status))
+            }
+
+        case 6:
+            // Warm spare: run the EIM (endpoint-independent mapping) self-test.
+            // The verdict lands in the message-5 status within a few seconds.
+            adapter.runWarmSpareEimTest { started in
+                let result: [String: Any] = ["started": started]
+                completionHandler(try? JSONSerialization.data(withJSONObject: result))
+            }
+
+        #if FAILOVER_TESTING
+        case 7:
+            // Debug: force the warm spare active path.
+            // Byte 1: 0 = primary, 1 = cellular, 2 = resume automatic control.
+            guard messageData.count >= 2 else {
+                completionHandler(nil)
+                return
+            }
+            let path: WarmSparePath?
+            switch messageData[1] {
+            case 0: path = .primary
+            case 1: path = .cellular
+            default: path = nil
+            }
+            adapter.debugForceWarmSparePath(path)
+            completionHandler(try? JSONSerialization.data(withJSONObject: ["success": true]))
         #endif
 
         case 4:

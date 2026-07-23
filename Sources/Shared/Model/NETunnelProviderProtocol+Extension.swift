@@ -26,6 +26,15 @@ extension NETunnelProviderProtocol {
         providerConfiguration = ["UID": getuid()]
         #endif
 
+        // Preserve warm spare settings across protocol rebuilds (tunnel
+        // edits recreate the protocol object from scratch).
+        if let oldProto = old as? NETunnelProviderProtocol,
+           let warmSpare = oldProto.providerConfiguration?["WarmSpareSettings"] {
+            var config = providerConfiguration ?? [:]
+            config["WarmSpareSettings"] = warmSpare
+            providerConfiguration = config
+        }
+
         let endpoints = tunnelConfiguration.peers.compactMap { $0.endpoint }
         if endpoints.count == 1 {
             serverAddress = endpoints[0].stringRepresentation
