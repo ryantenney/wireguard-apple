@@ -737,6 +737,20 @@ func wgWarmSetActivePath(tunnelHandle int32, path int32) int32 {
 	return 0
 }
 
+// wgWarmSetPrimaryProbing enables (1) or disables (0) default-path quality
+// probes. The path controller disables them while Wi-Fi is not the default
+// path — they only inform decisions on Wi-Fi, and probing over cellular
+// wastes radio wakes.
+//
+//export wgWarmSetPrimaryProbing
+func wgWarmSetPrimaryProbing(tunnelHandle int32, enabled int32) {
+	ctrl, ok := warmSpareControllers[tunnelHandle]
+	if !ok {
+		return
+	}
+	ctrl.setPrimaryProbing(enabled != 0)
+}
+
 // wgWarmGetState returns a JSON snapshot of warm spare state: active path,
 // warm/cold, per-path RTT/loss, and the latest EIM self-test result.
 //

@@ -1377,6 +1377,13 @@ extension WireGuardAdapter: WarmSparePathBackend {
         }
     }
 
+    public func warmSpareSetPrimaryProbing(_ enabled: Bool) {
+        workQueue.async {
+            guard case .started(let handle, _) = self.state else { return }
+            wgWarmSetPrimaryProbing(handle, enabled ? 1 : 0)
+        }
+    }
+
     public func warmSpareFetchState(completionHandler: @escaping ([String: Any]?) -> Void) {
         workQueue.async {
             guard case .started(let handle, _) = self.state,

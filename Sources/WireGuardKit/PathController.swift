@@ -18,6 +18,7 @@ public protocol WarmSparePathBackend: AnyObject {
     func warmSpareWarmCellular(ifindex: UInt32)
     func warmSpareCoolCellular()
     func warmSpareSetActivePath(_ path: WarmSparePath)
+    func warmSpareSetPrimaryProbing(_ enabled: Bool)
     func warmSpareFetchState(completionHandler: @escaping ([String: Any]?) -> Void)
 }
 
@@ -160,6 +161,12 @@ public final class PathController {
             self.defaultPathSatisfied = isSatisfied
             self.defaultPathUsesWifi = usesWifi
 
+            // Default-path quality probes only inform decisions while Wi-Fi
+            // is the default path; keep the radio quiet otherwise. (Re-sent
+            // on every update: the Go-side gate is also how a resumed
+            // backend, which defaults to probing on, learns the truth.)
+            self.backend?.warmSpareSetPrimaryProbing(usesWifi)
+
             guard self.forcedPath == nil else { return }
 
             if !isSatisfied {
@@ -237,6 +244,10 @@ public final class PathController {
 
     private func poll() {
         guard isRunning else { return }
+        // Keep the Go-side probing gate converged: a backend rebuilt after a
+        // temporary shutdown defaults to probing on, and the path update that
+        // triggered the resume may have raced the restart.
+        backend?.warmSpareSetPrimaryProbing(defaultPathUsesWifi)
         backend?.warmSpareFetchState { [weak self] stateDict in
             guard let self = self else { return }
             self.queue.async {

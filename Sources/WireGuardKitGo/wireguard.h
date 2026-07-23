@@ -46,6 +46,8 @@ extern int32_t wgWarmSetCellular(int32_t handle, int32_t ifindex);
 extern void    wgWarmClearCellular(int32_t handle);
 // path: 0 = primary (default path), 1 = cellular.
 extern int32_t wgWarmSetActivePath(int32_t handle, int32_t path);
+// Enable (1) / disable (0) default-path quality probes (disabled off Wi-Fi).
+extern void    wgWarmSetPrimaryProbing(int32_t handle, int32_t enabled);
 extern char   *wgWarmGetState(int32_t handle);
 extern int32_t wgWarmStartEimTest(int32_t handle);
 

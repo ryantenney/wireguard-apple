@@ -441,6 +441,13 @@ type warmSpareController struct {
 	keepaliveStop chan struct{} // non-nil while cellular is warm
 	stopped       bool
 
+	// primaryProbing gates the default-path quality probes (atomic bool).
+	// Probes only inform decisions while Wi-Fi is the default path
+	// (degradation detection, recovery dwell); the path controller disables
+	// them otherwise so an always-on tunnel doesn't ping over cellular all
+	// day. Defaults to enabled.
+	primaryProbing int32
+
 	primaryStats  pathStats
 	cellularStats pathStats
 
@@ -468,7 +475,21 @@ func newWarmSpareController(bind *dualPathBind, probeAddr netip.Addr, probePort 
 		keepaliveInterval:    time.Duration(keepaliveSeconds) * time.Second,
 		primaryProbeInterval: defaultPrimaryProbeInterval,
 		pending:              make(map[uint64]pendingProbe),
+		primaryProbing:       1,
 		stopCh:               make(chan struct{}),
+	}
+}
+
+// setPrimaryProbing enables or disables default-path quality probes. Stats
+// are reset on transition so stale samples can't feed later decisions.
+func (c *warmSpareController) setPrimaryProbing(enabled bool) {
+	var v int32
+	if enabled {
+		v = 1
+	}
+	if atomic.SwapInt32(&c.primaryProbing, v) != v {
+		c.primaryStats.reset()
+		c.logger.Verbosef("Warm spare: primary-path probing %s", map[bool]string{true: "enabled", false: "disabled"}[enabled])
 	}
 }
 
@@ -712,7 +733,9 @@ func (c *warmSpareController) primaryProbeLoop() {
 		case <-c.stopCh:
 			return
 		case <-ticker.C:
-			c.sendProbe(warmPathPrimary, c.probePort, false)
+			if atomic.LoadInt32(&c.primaryProbing) == 1 {
+				c.sendProbe(warmPathPrimary, c.probePort, false)
+			}
 		}
 	}
 }
