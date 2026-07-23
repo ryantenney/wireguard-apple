@@ -103,6 +103,16 @@ public class WireGuardAdapter {
     /// does not use it). Compared on every path change to decide whether routes need re-applying.
     private var localNetworkSnapshot = LocalNetworkSnapshot.empty
 
+    /// Warm spare cellular failover settings, if the tunnel was started with
+    /// warm spare enabled (iOS single-config tunnels only). See
+    /// `DESIGN-warm-spare-cellular-failover.md`.
+    private var warmSpareSettings: WarmSpareSettings?
+
+    /// Path controller driving warm spare warming and path flips. Created on
+    /// the first successful warm-spare backend start; survives temporary
+    /// shutdowns (the Go-side state is rebuilt on resume).
+    public private(set) var pathController: PathController?
+
     /// Tunnel device file descriptor.
     private var tunnelFileDescriptor: Int32? {
         var ctlInfo = ctl_info()
@@ -194,6 +204,9 @@ public class WireGuardAdapter {
         // Stop all background probes
         stopAllProbes()
 
+        // Stop the warm spare path controller
+        pathController?.stop()
+
         // Shutdown the tunnel
         switch self.state {
         case .started(let handle, _):
@@ -261,8 +274,10 @@ public class WireGuardAdapter {
     /// Start the tunnel tunnel.
     /// - Parameters:
     ///   - tunnelConfiguration: tunnel configuration.
+    ///   - warmSpareSettings: optional warm spare cellular failover settings.
+    ///     Honored on iOS only; ignored (with a log entry) when disabled.
     ///   - completionHandler: completion handler.
-    public func start(tunnelConfiguration: TunnelConfiguration, excludedEndpoints: [Endpoint] = [], completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
+    public func start(tunnelConfiguration: TunnelConfiguration, excludedEndpoints: [Endpoint] = [], warmSpareSettings: WarmSpareSettings? = nil, completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
         workQueue.async {
             guard case .stopped = self.state else {
                 completionHandler(.invalidState)
@@ -277,6 +292,9 @@ public class WireGuardAdapter {
 
             do {
                 self.excludedEndpoints = excludedEndpoints
+                if let warmSpareSettings = warmSpareSettings, warmSpareSettings.enabled {
+                    self.warmSpareSettings = warmSpareSettings
+                }
                 let settingsGenerator = try self.makeSettingsGenerator(with: tunnelConfiguration)
                 try self.setNetworkSettings(settingsGenerator.generateNetworkSettings())
 
@@ -284,7 +302,7 @@ public class WireGuardAdapter {
                 self.logEndpointResolutionResults(resolutionResults)
 
                 self.state = .started(
-                    try self.startWireGuardBackend(wgConfig: wgConfig),
+                    try self.startWireGuardBackend(wgConfig: wgConfig, settingsGenerator: settingsGenerator),
                     settingsGenerator
                 )
                 self.networkMonitor = networkMonitor
@@ -464,6 +482,9 @@ public class WireGuardAdapter {
             self.titOuterIfaceIP = nil
             self.lastAppliedNetworkSettings = nil
             self.stopAllProbes()
+            self.pathController?.stop()
+            self.pathController = nil
+            self.warmSpareSettings = nil
 
             self.state = .stopped
 
@@ -880,6 +901,54 @@ public class WireGuardAdapter {
         probeHandles.removeAll()
     }
 
+    // MARK: - Warm Spare methods
+
+    /// Merged warm spare status for IPC reporting: the Go bridge's state
+    /// (active path, warm/cold, per-path RTT/loss, EIM verdict) plus the path
+    /// controller's state machine snapshot. `nil` when warm spare is not
+    /// engaged for this tunnel.
+    public func getWarmSpareStatus(completionHandler: @escaping ([String: Any]?) -> Void) {
+        guard let controller = pathController else {
+            completionHandler(nil)
+            return
+        }
+        warmSpareFetchState { goState in
+            var merged = goState ?? [:]
+            controller.snapshot { snapshot in
+                for (key, value) in snapshot {
+                    merged[key] = value
+                }
+                completionHandler(merged)
+            }
+        }
+    }
+
+    /// Kick off the endpoint-independent-mapping self-test. Warms the
+    /// cellular spare first if it is cold (the test needs the socket), then
+    /// starts the test after a short settling delay. The verdict lands in
+    /// `getWarmSpareStatus` within a few seconds.
+    public func runWarmSpareEimTest(completionHandler: @escaping (Bool) -> Void) {
+        guard let controller = pathController else {
+            completionHandler(false)
+            return
+        }
+        controller.requestWarm()
+        workQueue.asyncAfter(deadline: .now() + 1) {
+            guard case .started(let handle, _) = self.state else {
+                completionHandler(false)
+                return
+            }
+            completionHandler(wgWarmStartEimTest(handle) == 0)
+        }
+    }
+
+    #if FAILOVER_TESTING
+    /// Debug: force the active path (or `nil` to resume automatic control).
+    public func debugForceWarmSparePath(_ path: WarmSparePath?) {
+        pathController?.forcePath(path)
+    }
+    #endif
+
     // MARK: - Private methods
 
     /// Setup WireGuard log handler.
@@ -962,15 +1031,40 @@ public class WireGuardAdapter {
     }
 
     /// Start WireGuard backend.
+    /// When warm spare settings are present (iOS), starts the backend through
+    /// `wgTurnOnWarm` — a dual-path bind that can hold a pre-warmed cellular
+    /// socket — and brings up the path controller. Falls back to the regular
+    /// `wgTurnOn` path if the warm variant cannot start, so a broken warm
+    /// spare setup degrades to current-release behavior instead of failing
+    /// the tunnel.
     /// - Parameter wgConfig: WireGuard configuration
+    /// - Parameter settingsGenerator: generator holding the resolved endpoints
+    ///   (used to derive the probe target for warm spare).
     /// - Throws: an error of type `WireGuardAdapterError`
     /// - Returns: tunnel handle
-    private func startWireGuardBackend(wgConfig: String) throws -> Int32 {
+    private func startWireGuardBackend(wgConfig: String, settingsGenerator: PacketTunnelSettingsGenerator) throws -> Int32 {
         guard let tunnelFileDescriptor = self.tunnelFileDescriptor else {
             throw WireGuardAdapterError.cannotLocateTunnelFileDescriptor
         }
 
-        let handle = wgTurnOn(wgConfig, tunnelFileDescriptor)
+        var handle: Int32 = -1
+        #if os(iOS)
+        if let warmSettings = self.warmSpareSettings {
+            if let probeAddress = Self.probeAddressString(from: settingsGenerator) {
+                handle = wgTurnOnWarm(wgConfig, probeAddress, Int32(warmSettings.probePort), Int32(warmSettings.warmKeepaliveInterval), tunnelFileDescriptor)
+                if handle >= 0 {
+                    self.startPathControllerIfNeeded(settings: warmSettings)
+                } else {
+                    self.logHandler(.error, "Warm spare: wgTurnOnWarm failed, falling back to regular backend start")
+                }
+            } else {
+                self.logHandler(.error, "Warm spare: no resolved IP endpoint to probe, falling back to regular backend start")
+            }
+        }
+        #endif
+        if handle < 0 {
+            handle = wgTurnOn(wgConfig, tunnelFileDescriptor)
+        }
         if handle < 0 {
             throw WireGuardAdapterError.startWireGuardBackend(handle)
         }
@@ -978,6 +1072,36 @@ public class WireGuardAdapter {
         wgDisableSomeRoamingForBrokenMobileSemantics(handle)
         #endif
         return handle
+    }
+
+    /// The warm spare probe target: the first resolved IP endpoint. Probes
+    /// must target the same host as the tunnel endpoint so they share the
+    /// server address routing exception and stay off the utun.
+    private static func probeAddressString(from settingsGenerator: PacketTunnelSettingsGenerator) -> String? {
+        for endpoint in settingsGenerator.resolvedEndpoints {
+            guard let endpoint = endpoint else { continue }
+            switch endpoint.host {
+            case .ipv4(let address):
+                return "\(address)"
+            case .ipv6(let address):
+                return "\(address)"
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+
+    /// Create and start the path controller on the first successful
+    /// warm-spare backend start. Re-entrant: temporary shutdown/resume cycles
+    /// restart the Go backend but keep the controller.
+    private func startPathControllerIfNeeded(settings: WarmSpareSettings) {
+        guard pathController == nil else { return }
+        let controller = PathController(settings: settings, backend: self) { [weak self] logLevel, message in
+            self?.logHandler(logLevel, message)
+        }
+        pathController = controller
+        controller.start()
     }
 
     /// Resolves the hostnames in the given tunnel configuration and return settings generator.
@@ -1096,6 +1220,15 @@ public class WireGuardAdapter {
         // Notify health monitor of network changes (pauses evaluation while offline, may trigger failback probe)
         self.healthMonitor?.networkPathDidChange(isSatisfied: path.status.isSatisfiable)
 
+        // Feed the warm spare path controller (hard-loss backstop). The
+        // controller flips the active socket internally; the platform
+        // handling below (bump / temporary shutdown) still applies to the
+        // primary socket, which follows the default path.
+        self.pathController?.defaultPathDidUpdate(
+            isSatisfied: path.status.isSatisfiable,
+            usesWifi: path.usesInterfaceType(.wifi)
+        )
+
         #if os(macOS)
         switch self.state {
         case .started(let handle, _):
@@ -1150,7 +1283,7 @@ public class WireGuardAdapter {
                 self.logEndpointResolutionResults(resolutionResults)
 
                 self.state = .started(
-                    try self.startWireGuardBackend(wgConfig: wgConfig),
+                    try self.startWireGuardBackend(wgConfig: wgConfig, settingsGenerator: resumed),
                     resumed
                 )
             } catch {
@@ -1213,6 +1346,51 @@ public class WireGuardAdapter {
         #endif
 
         self.refreshLocalNetworkExclusionsIfNeeded(path: path)
+    }
+}
+
+// MARK: - WarmSparePathBackend
+
+extension WireGuardAdapter: WarmSparePathBackend {
+    public func warmSpareWarmCellular(ifindex: UInt32) {
+        workQueue.async {
+            guard case .started(let handle, _) = self.state else { return }
+            if wgWarmSetCellular(handle, Int32(bitPattern: ifindex)) < 0 {
+                self.logHandler(.error, "Warm spare: failed to warm cellular on ifindex \(ifindex)")
+            }
+        }
+    }
+
+    public func warmSpareCoolCellular() {
+        workQueue.async {
+            guard case .started(let handle, _) = self.state else { return }
+            wgWarmClearCellular(handle)
+        }
+    }
+
+    public func warmSpareSetActivePath(_ path: WarmSparePath) {
+        workQueue.async {
+            guard case .started(let handle, _) = self.state else { return }
+            if wgWarmSetActivePath(handle, path.rawValue) < 0 {
+                self.logHandler(.error, "Warm spare: failed to set active path")
+            }
+        }
+    }
+
+    public func warmSpareFetchState(completionHandler: @escaping ([String: Any]?) -> Void) {
+        workQueue.async {
+            guard case .started(let handle, _) = self.state,
+                  let stateCString = wgWarmGetState(handle) else {
+                completionHandler(nil)
+                return
+            }
+            let jsonString = String(cString: stateCString)
+            free(stateCString)
+            let dict = jsonString.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+            }
+            completionHandler(dict)
+        }
     }
 }
 
