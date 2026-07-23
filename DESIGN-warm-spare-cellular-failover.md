@@ -2,7 +2,8 @@
 
 Status: Phases 1–3 of the implementation spec are built (mechanism, detection
 & state machine, warming policy, config schema, EIM self-test, server
-component). Settings UI and the hardening pass (§Remaining Work) are not.
+component, settings/status UI, `FAILOVER_TESTING` debug controls). The
+on-device hardening pass (§Remaining Work) is not.
 
 The dominant latency cost when leaving Wi-Fi coverage is not WireGuard session
 re-establishment — it's waiting for iOS to bring up a cellular data path and
@@ -156,6 +157,14 @@ Transition inputs:
   (~seconds of connected-state power plus RRC tail), which is why adaptive
   is the default.
 
+Default-path quality probes are themselves gated (`wgWarmSetPrimaryProbing`,
+driven by the path controller): they run only while Wi-Fi is the default
+path, since that's the only time they inform a decision — an always-on
+tunnel spending the day on cellular sends no probe traffic at all. The
+hard-loss `NWPathMonitor` backstop covers path transitions while probes are
+off, and stats reset on each gate transition so stale samples can't feed
+later decisions.
+
 ### Failover procedure
 
 1. `wgWarmSetActivePath(handle, 1)` — atomic flip of the socket `Send()`
@@ -228,6 +237,7 @@ dwellSeconds:          Seconds  = 10
 | `Sources/WireGuardKit/WireGuardAdapter.swift` | Warm start path, backend conformance, status/EIM accessors |
 | `Sources/WireGuardNetworkExtension/PacketTunnelProvider.swift` | Settings parsing, IPC messages 5/6/7 |
 | `Sources/WireGuardApp/Tunnel/TunnelsManager+WarmSpare.swift` | App-side persistence + IPC, `supportsWarmSpare` |
+| `Sources/WireGuardApp/UI/iOS/ViewController/WarmSpareViewController.swift` | Settings + live status + NAT test UI (entry: tunnel detail) |
 | `server/echo-responder/` | Stateless UDP echo responder (deploy on the WG server host) |
 
 IPC message types (`handleAppMessage`): 0 runtime config, 1 failover state,
@@ -254,12 +264,6 @@ IPC message types (`handleAppMessage`): 0 runtime config, 1 failover state,
 
 ## Remaining work
 
-- **Settings UI** (spec §4): warm spare section in tunnel detail, visible
-  only when `supportsWarmSpare` (Always On) is selected, greyed with an
-  explanatory note otherwise; EIM verdict display + "run test" action.
-  All model/IPC plumbing exists (`TunnelsManager+WarmSpare.swift`).
-- **Debug UI** for the force-flip IPC (message 7), alongside the existing
-  Force Failover buttons under `FAILOVER_TESTING`.
 - **Phase 4 hardening**: walk-out-the-door and attenuated-Wi-Fi testing
   against the ≤1 s acceptance criterion; Instruments energy comparison of
   cold / adaptive / continuous; flap soak test; known-EDM NAT rig (nftables

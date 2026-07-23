@@ -11,6 +11,7 @@ class TunnelDetailTableViewController: UITableViewController {
         case interface
         case peer(index: Int, peer: TunnelViewModel.PeerData)
         case onDemand
+        case warmSpare
         case diagnostics
         case delete
     }
@@ -104,6 +105,8 @@ class TunnelDetailTableViewController: UITableViewController {
             sections.append(.peer(index: index, peer: peer))
         }
         sections.append(.onDemand)
+        // Warm spare sits next to On-Demand because its availability depends on the on-demand mode.
+        sections.append(.warmSpare)
         sections.append(.diagnostics)
         sections.append(.delete)
     }
@@ -285,6 +288,10 @@ class TunnelDetailTableViewController: UITableViewController {
             break
         }
         tableView.reloadSections(IndexSet(integer: onDemandSection), with: .automatic)
+        // The warm spare row's availability depends on the on-demand mode.
+        if let warmSpareSection = sections.firstIndex(where: { if case .warmSpare = $0 { return true } else { return false } }) {
+            tableView.reloadSections(IndexSet(integer: warmSpareSection), with: .none)
+        }
     }
 }
 
@@ -320,6 +327,8 @@ extension TunnelDetailTableViewController {
             return peerFieldIsVisible[peerIndex].filter { $0 }.count
         case .onDemand:
             return onDemandViewModel.isWiFiInterfaceEnabled ? 2 : 1
+        case .warmSpare:
+            return 1
         case .diagnostics:
             return 1
         case .delete:
@@ -339,6 +348,8 @@ extension TunnelDetailTableViewController {
             return tr("tunnelSectionTitlePeer")
         case .onDemand:
             return tr("tunnelSectionTitleOnDemand")
+        case .warmSpare:
+            return nil
         case .diagnostics:
             return nil
         case .delete:
@@ -358,6 +369,8 @@ extension TunnelDetailTableViewController {
             return peerCell(for: tableView, at: indexPath, with: peer, peerIndex: index)
         case .onDemand:
             return onDemandCell(for: tableView, at: indexPath)
+        case .warmSpare:
+            return warmSpareCell(for: tableView, at: indexPath)
         case .diagnostics:
             return diagnosticsCell(for: tableView, at: indexPath)
         case .delete:
@@ -515,6 +528,19 @@ extension TunnelDetailTableViewController {
         }
     }
 
+    private func warmSpareCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell: ChevronCell = tableView.dequeueReusableCell(for: indexPath)
+        cell.message = "Warm Spare"
+        if !tunnel.onDemandOption.supportsWarmSpare {
+            cell.detailMessage = "Requires Always On"
+        } else if tunnelsManager.warmSpareSettings(for: tunnel)?.enabled == true {
+            cell.detailMessage = "On"
+        } else {
+            cell.detailMessage = "Off"
+        }
+        return cell
+    }
+
     private func diagnosticsCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell: ChevronCell = tableView.dequeueReusableCell(for: indexPath)
         cell.message = "Connection Details"
@@ -551,6 +577,9 @@ extension TunnelDetailTableViewController {
             case .ssid = TunnelDetailTableViewController.onDemandFields[indexPath.row] {
             return indexPath
         }
+        if case .warmSpare = sections[indexPath.section] {
+            return indexPath
+        }
         if case .diagnostics = sections[indexPath.section] {
             return indexPath
         }
@@ -562,6 +591,9 @@ extension TunnelDetailTableViewController {
             case .ssid = TunnelDetailTableViewController.onDemandFields[indexPath.row] {
             let ssidDetailVC = SSIDOptionDetailTableViewController(title: onDemandViewModel.ssidOption.localizedUIString, ssids: onDemandViewModel.selectedSSIDs)
             navigationController?.pushViewController(ssidDetailVC, animated: true)
+        } else if case .warmSpare = sections[indexPath.section] {
+            let warmSpareVC = WarmSpareViewController(tunnelsManager: tunnelsManager, tunnel: tunnel)
+            navigationController?.pushViewController(warmSpareVC, animated: true)
         } else if case .diagnostics = sections[indexPath.section] {
             let diagnosticsVC = ConnectionDiagnosticsTableViewController(tunnelsManager: tunnelsManager, tunnel: tunnel)
             navigationController?.pushViewController(diagnosticsVC, animated: true)
