@@ -34,6 +34,21 @@ extern int64_t wgSetInnerConfigTiT(int32_t handle, const char *settings);
 extern void    wgBumpSocketsTiT(int32_t handle);
 extern void    wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(int32_t handle);
 
+// Warm spare cellular failover: tunnel whose conn.Bind holds a pre-warmed
+// UDP socket pinned to the cellular interface (IP_BOUND_IF) alongside the
+// default-path socket. Failover is an atomic path flip — no rebind, no
+// re-handshake. See DESIGN-warm-spare-cellular-failover.md.
+// probe_addr: resolved IP of the active peer endpoint (echo responder host).
+// probe_port: server echo port; must differ from the WireGuard port.
+extern int32_t wgTurnOnWarm(const char *settings, const char *probe_addr,
+                            int32_t probe_port, int32_t keepalive_interval, int32_t tun_fd);
+extern int32_t wgWarmSetCellular(int32_t handle, int32_t ifindex);
+extern void    wgWarmClearCellular(int32_t handle);
+// path: 0 = primary (default path), 1 = cellular.
+extern int32_t wgWarmSetActivePath(int32_t handle, int32_t path);
+extern char   *wgWarmGetState(int32_t handle);
+extern int32_t wgWarmStartEimTest(int32_t handle);
+
 // Background probe: lightweight WireGuard device with null tun and real UDP sockets.
 // Used for non-disruptive failback probing and hot spare validation.
 // keepalive_override: if > 0, injects persistent_keepalive_interval for all peers (seconds).
