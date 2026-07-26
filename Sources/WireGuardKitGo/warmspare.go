@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"os"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -46,7 +45,6 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun"
 )
 
 const (
@@ -771,19 +769,9 @@ func newWarmTunnel(settings string, probeAddrStr string, probePort int, keepaliv
 		return nil, nil, fmt.Errorf("invalid probe port %d", probePort)
 	}
 
-	dupTunFd, err := unix.Dup(int(tunFd))
+	tunDev, err := dupTUNFile(tunFd)
 	if err != nil {
-		return nil, nil, fmt.Errorf("unable to dup tun fd: %w", err)
-	}
-	err = unix.SetNonblock(dupTunFd, true)
-	if err != nil {
-		unix.Close(dupTunFd)
-		return nil, nil, fmt.Errorf("unable to set tun fd as non blocking: %w", err)
-	}
-	tunDev, err := tun.CreateTUNFromFile(os.NewFile(uintptr(dupTunFd), "/dev/tun"), 0)
-	if err != nil {
-		unix.Close(dupTunFd)
-		return nil, nil, fmt.Errorf("unable to create new tun device from fd: %w", err)
+		return nil, nil, err
 	}
 
 	bind := newDualPathBind(logger)

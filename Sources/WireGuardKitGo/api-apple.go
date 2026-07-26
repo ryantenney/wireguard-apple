@@ -106,27 +106,13 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 		Verbosef: CLogger(0).Printf,
 		Errorf:   CLogger(1).Printf,
 	}
-	dupTunFd, err := unix.Dup(int(tunFd))
+	tunDev, err := dupTUNFile(tunFd)
 	if err != nil {
-		logger.Errorf("Unable to dup tun fd: %v", err)
-		return -1
-	}
-
-	err = unix.SetNonblock(dupTunFd, true)
-	if err != nil {
-		logger.Errorf("Unable to set tun fd as non blocking: %v", err)
-		unix.Close(dupTunFd)
-		return -1
-	}
-	tun, err := tun.CreateTUNFromFile(os.NewFile(uintptr(dupTunFd), "/dev/tun"), 0)
-	if err != nil {
-		logger.Errorf("Unable to create new tun device from fd: %v", err)
-		// CreateTUNFromFile closes the file on all of its error paths; closing
-		// dupTunFd again could destroy an unrelated descriptor that reused it.
+		logger.Errorf("%v", err)
 		return -1
 	}
 	logger.Verbosef("Attaching to interface")
-	dev := device.NewDevice(tun, conn.NewStdNetBind(), logger)
+	dev := device.NewDevice(tunDev, conn.NewStdNetBind(), logger)
 
 	err = dev.IpcSet(C.GoString(settings))
 	if err != nil {
@@ -532,21 +518,9 @@ func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
 	}
 
 	// Create a real tun device from the file descriptor.
-	dupTunFd, err := unix.Dup(int(tunFd))
+	realTun, err := dupTUNFile(tunFd)
 	if err != nil {
-		h.Errorf("Probe promote: unable to dup tun fd: %v", err)
-		return -1
-	}
-	if err = unix.SetNonblock(dupTunFd, true); err != nil {
-		h.Errorf("Probe promote: unable to set tun fd non-blocking: %v", err)
-		unix.Close(dupTunFd)
-		return -1
-	}
-	realTun, err := tun.CreateTUNFromFile(os.NewFile(uintptr(dupTunFd), "/dev/tun"), 0)
-	if err != nil {
-		h.Errorf("Probe promote: unable to create tun device: %v", err)
-		// CreateTUNFromFile closes the file on all of its error paths; closing
-		// dupTunFd again could destroy an unrelated descriptor that reused it.
+		h.Errorf("Probe promote: %v", err)
 		return -1
 	}
 
@@ -1110,23 +1084,9 @@ func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *
 	outerDev.Up()
 
 	// Build INNER device: real utun + PipedBind
-	dupTunFd, err := unix.Dup(int(tunFd))
+	innerTunDev, err := dupTUNFile(tunFd)
 	if err != nil {
-		innerLogger.Errorf("TiT: unable to dup tun fd: %v", err)
-		outerDev.Close()
-		return -1
-	}
-	if err = unix.SetNonblock(dupTunFd, true); err != nil {
-		innerLogger.Errorf("TiT: unable to set tun fd non-blocking: %v", err)
-		unix.Close(dupTunFd)
-		outerDev.Close()
-		return -1
-	}
-	innerTunDev, err := tun.CreateTUNFromFile(os.NewFile(uintptr(dupTunFd), "/dev/tun"), 0)
-	if err != nil {
-		innerLogger.Errorf("TiT: unable to create tun device: %v", err)
-		// CreateTUNFromFile closes the file on all of its error paths; closing
-		// dupTunFd again could destroy an unrelated descriptor that reused it.
+		innerLogger.Errorf("TiT: %v", err)
 		outerDev.Close()
 		return -1
 	}
