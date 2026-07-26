@@ -57,7 +57,6 @@ extern int32_t wgWarmStartEimTest(int32_t handle);
 extern int32_t wgProbeOn(const char *settings, int32_t keepalive_override);
 extern void    wgProbeOff(int32_t handle);
 extern char   *wgProbeGetConfig(int32_t handle);
-extern int64_t wgProbeSetConfig(int32_t handle, const char *settings);
 extern void    wgProbeBumpSockets(int32_t handle);
 // Promote a probe to a full tunnel by swapping in a real utun fd.
 // Preserves the existing WireGuard session (no re-handshake).

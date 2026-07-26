@@ -19,7 +19,6 @@ const statsWindowSize = 20
 
 type probeOutcome struct {
 	rttMs float64 // < 0 means lost
-	at    time.Time
 }
 
 type pathStats struct {
@@ -31,7 +30,7 @@ type pathStats struct {
 func (s *pathStats) record(rttMs float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.window = append(s.window, probeOutcome{rttMs: rttMs, at: time.Now()})
+	s.window = append(s.window, probeOutcome{rttMs: rttMs})
 	if len(s.window) > statsWindowSize {
 		s.window = s.window[len(s.window)-statsWindowSize:]
 	}

@@ -458,15 +458,6 @@ func wgProbeGetConfig(handle int32) *C.char {
 	return ipcGetCString(h.Device)
 }
 
-//export wgProbeSetConfig
-func wgProbeSetConfig(handle int32, settings *C.char) int64 {
-	h, ok := probeHandles.get(handle)
-	if !ok {
-		return -1
-	}
-	return ipcSetWithErrno(h.Device, h.Logger, C.GoString(settings), "Probe")
-}
-
 //export wgProbeBumpSockets
 func wgProbeBumpSockets(handle int32) {
 	h, ok := probeHandles.get(handle)
