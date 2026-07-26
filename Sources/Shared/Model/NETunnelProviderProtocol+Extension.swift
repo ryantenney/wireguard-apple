@@ -22,18 +22,19 @@ extension NETunnelProviderProtocol {
         if passwordReference == nil {
             return nil
         }
+        // Carry forward all provider-configuration state from the previous
+        // protocol (warm spare settings today, any future keys by default) —
+        // a tunnel edit must not silently drop feature state. Only the keys
+        // this init owns are refreshed or removed:
+        //  - "WgQuickConfig": legacy inline config, superseded by the
+        //    keychain reference created above; a stale copy must not linger.
+        //  - "UID" (macOS): always stamped for the current user.
+        var config = (old as? NETunnelProviderProtocol)?.providerConfiguration ?? [:]
+        config.removeValue(forKey: "WgQuickConfig")
         #if os(macOS)
-        providerConfiguration = ["UID": getuid()]
+        config["UID"] = getuid()
         #endif
-
-        // Preserve warm spare settings across protocol rebuilds (tunnel
-        // edits recreate the protocol object from scratch).
-        if let oldProto = old as? NETunnelProviderProtocol,
-           let warmSpare = oldProto.providerConfiguration?["WarmSpareSettings"] {
-            var config = providerConfiguration ?? [:]
-            config["WarmSpareSettings"] = warmSpare
-            providerConfiguration = config
-        }
+        providerConfiguration = config.isEmpty ? nil : config
 
         let endpoints = tunnelConfiguration.peers.compactMap { $0.endpoint }
         if endpoints.count == 1 {
