@@ -66,6 +66,15 @@ func (l CLogger) Printf(format string, args ...interface{}) {
 	C.callLogger(state.fn, state.ctx, C.int(l), cstring(fmt.Sprintf(format, args...)))
 }
 
+// newAppleLogger returns a device.Logger routed through the Swift log
+// callback registered via wgSetLogger.
+func newAppleLogger() *device.Logger {
+	return &device.Logger{
+		Verbosef: CLogger(0).Printf,
+		Errorf:   CLogger(1).Printf,
+	}
+}
+
 type tunnelHandle struct {
 	*device.Device
 	*device.Logger
@@ -101,10 +110,7 @@ func wgSetLogger(context, loggerFn uintptr) {
 
 //export wgTurnOn
 func wgTurnOn(settings *C.char, tunFd int32) int32 {
-	logger := &device.Logger{
-		Verbosef: CLogger(0).Printf,
-		Errorf:   CLogger(1).Printf,
-	}
+	logger := newAppleLogger()
 	tunDev, err := dupTUNFile(tunFd)
 	if err != nil {
 		logger.Errorf("%v", err)
@@ -406,10 +412,7 @@ var probeHandles = newHandleRegistry[probeHandle]()
 
 //export wgProbeOn
 func wgProbeOn(settings *C.char, keepaliveOverride int32) int32 {
-	logger := &device.Logger{
-		Verbosef: CLogger(0).Printf,
-		Errorf:   CLogger(1).Printf,
-	}
+	logger := newAppleLogger()
 
 	nullTun := newNullTunDevice(1420)
 	swappable := newSwappableTunDevice(nullTun)
@@ -578,10 +581,7 @@ var warmSpareControllers = newHandleRegistry[*warmSpareController]()
 //
 //export wgTurnOnWarm
 func wgTurnOnWarm(settings *C.char, probeAddr *C.char, probePort int32, keepaliveInterval int32, tunFd int32) int32 {
-	logger := &device.Logger{
-		Verbosef: CLogger(0).Printf,
-		Errorf:   CLogger(1).Printf,
-	}
+	logger := newAppleLogger()
 	dev, ctrl, err := newWarmTunnel(C.GoString(settings), C.GoString(probeAddr), int(probePort), int(keepaliveInterval), tunFd, logger)
 	if err != nil {
 		logger.Errorf("Warm spare: %v", err)
@@ -1022,14 +1022,8 @@ var titHandles = newHandleRegistry[titHandle]()
 
 //export wgTurnOnTiT
 func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *C.char, tunFd int32) int32 {
-	innerLogger := &device.Logger{
-		Verbosef: CLogger(0).Printf,
-		Errorf:   CLogger(1).Printf,
-	}
-	outerLogger := &device.Logger{
-		Verbosef: CLogger(0).Printf,
-		Errorf:   CLogger(1).Printf,
-	}
+	innerLogger := newAppleLogger()
+	outerLogger := newAppleLogger()
 
 	outerIfaceIP, ok := netip.AddrFromSlice(net.ParseIP(C.GoString(outerIfaceIPStr)))
 	if !ok {
