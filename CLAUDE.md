@@ -9,7 +9,7 @@ Official WireGuard VPN client for iOS and macOS. Provides a full GUI application
 ```
 Sources/
   WireGuardKit/           # Core library (SPM target) - tunnel config, adapter, DNS, crypto types
-  WireGuardKitGo/         # Go bridge to wireguard-go backend (api-apple.go, Makefile)
+  WireGuardKitGo/         # Go bridge to wireguard-go backend (api-apple.go + per-subsystem export files, Makefile)
   WireGuardKitC/          # C crypto primitives (Curve25519 key derivation)
   WireGuardNetworkExtension/  # NEPacketTunnelProvider implementation
   WireGuardApp/           # App targets (iOS + macOS)
@@ -223,7 +223,9 @@ Keeps a pre-warmed UDP socket on the cellular interface (`IP_BOUND_IF`) while Wi
 
 - Simulator uses `MockTunnels` (see `Sources/WireGuardApp/Tunnel/MockTunnels.swift`)
 - Network Extension features require a real device with proper provisioning
-- No automated test suite in the repository
+- **Go bridge tests** run natively on any host: `cd Sources/WireGuardKitGo && go vet ./... && go test -race ./...`. The cgo export files are darwin-tagged; OS-independent logic lives in untagged files (`stats.go`, `probeproto.go`, `handles.go`) so vet/test work off-Mac. Darwin-only non-cgo files (`warmspare.go`, `bridge-helpers.go`) type-check via `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet ./...`.
+- **Swift unit tests**: `WireGuardKitTests` (Tests/WireGuardKitTests, wired via project.yml) covers pure Kit logic — UAPI parsers, settings Codables, PathPolicy predicates. Run with `xcodebuild test -scheme WireGuardKitTests` or Cmd-U in Xcode. It compiles the pure source files directly (no Go archive, no NetworkExtension).
+- Go bridge conventions: handle maps use `handleRegistry` (handles.go); providerConfiguration keys live in `Sources/Shared/Model/ProviderConfigurationKeys.swift`; IPC message types in `Sources/Shared/ProviderMessage.swift` — never spell either as literals.
 
 ### Compile Checks Without a Mac
 - `scripts/linux-swift/typecheck.sh` runs on a Linux Swift toolchain: `swiftc -parse` over every Swift file per platform, then a real `-typecheck` of the platform-independent core (configuration model, wg-quick parser, `FailoverSettings`, `ConnectionHealthMonitor`, `UapiRuntimeSnapshot`) against the stub Network module in `scripts/linux-swift/Network.swift`. Anything importing NetworkExtension, UIKit, AppKit, os.log, or Security is out of its reach.
