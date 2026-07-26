@@ -4,7 +4,6 @@
 
 import Foundation
 import NetworkExtension
-import WidgetKit
 import os.log
 
 protocol TunnelsManagerListDelegate: AnyObject {
@@ -34,8 +33,7 @@ class TunnelsManager {
     private var waiteeObservationToken: NSKeyValueObservation?
     private var configurationsObservationToken: NotificationToken?
     #if os(iOS)
-    /// Stable connection timestamp set once when a tunnel transitions to active.
-    private var widgetConnectedAt: Date?
+    private let widgetStatusWriter = WidgetStatusWriter()
     #endif
 
     init(tunnelProviders: [NETunnelProviderManager]) {
@@ -919,9 +917,9 @@ class TunnelsManager {
 
             // IP discovery: fetch when connected, clear when disconnected
             if session.status == .connected {
-                self.fetchPublicIPIfEnabled()
+                PublicIPFetcher.fetchIfEnabled { [weak self] in self?.tunnelInOperation()?.status == .active }
             } else if session.status == .disconnected {
-                self.clearDiscoveredIP()
+                PublicIPFetcher.clearDiscoveredIP()
                 self.restoreSuspendedOnDemandIfQuiescent()
             }
 
@@ -931,118 +929,9 @@ class TunnelsManager {
         }
     }
 
-    // MARK: - IP Discovery
-
-    /// Guards against stacking concurrent fetches when status flaps
-    /// (reasserting → connected cycles re-trigger discovery).
-    private static var isFetchingPublicIP = false
-
-    private func fetchPublicIPIfEnabled() {
-        guard IPDiscoverySettings.isEnabled else { return }
-        guard !TunnelsManager.isFetchingPublicIP else { return }
-        TunnelsManager.isFetchingPublicIP = true
-
-        // Delay slightly to let the tunnel settle before fetching
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            guard let self = self else {
-                TunnelsManager.isFetchingPublicIP = false
-                return
-            }
-            // The tunnel may have dropped during the delay. Without a tunnel
-            // the request would egress the physical interface, leaking the
-            // user's real IP to the lookup service — and then displaying it
-            // as the "public IP".
-            guard self.tunnelInOperation()?.status == .active else {
-                TunnelsManager.isFetchingPublicIP = false
-                return
-            }
-
-            guard let url = URL(string: "https://ipv4.icanhazip.com") else {
-                TunnelsManager.isFetchingPublicIP = false
-                return
-            }
-
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 10
-            request.cachePolicy = .reloadIgnoringLocalCacheData
-
-            let task = URLSession.shared.dataTask(with: request) { data, _, error in
-                DispatchQueue.main.async { [weak self] in
-                    TunnelsManager.isFetchingPublicIP = false
-                    guard let self = self else { return }
-                    if let error = error {
-                        wg_log(.error, message: "IP discovery failed: \(error.localizedDescription)")
-                        return
-                    }
-                    guard let data = data,
-                          let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                          !ip.isEmpty else { return }
-                    // Discard a result that raced the tunnel going down — it
-                    // may be the real (untunneled) address.
-                    guard self.tunnelInOperation()?.status == .active else { return }
-                    IPDiscoverySettings.discoveredIP = ip
-                    // Never log the address itself: exported logs would carry
-                    // a timestamped list of the user's exit (or real) IPs.
-                    wg_log(.debug, staticMessage: "IP discovery succeeded")
-                }
-            }
-            task.resume()
-        }
-    }
-
-    private func clearDiscoveredIP() {
-        IPDiscoverySettings.discoveredIP = nil
-    }
-
     #if os(iOS)
     func updateWidgetStatus() {
-        if let activeTunnel = allTunnels.first(where: { $0.status == .active }) {
-            // Only set connectedAt once when transitioning to active
-            if widgetConnectedAt == nil {
-                widgetConnectedAt = Date()
-            }
-            let status = VPNStatusData(
-                state: .connected,
-                tunnelName: activeTunnel.name,
-                connectedAt: widgetConnectedAt,
-                isOnDemandEnabled: activeTunnel.isActivateOnDemandEnabled,
-                hasOnDemandRules: activeTunnel.hasOnDemandRules
-            )
-            VPNStatusData.save(status)
-        } else if let activatingTunnel = allTunnels.first(where: { $0.status == .activating || $0.status == .waiting || $0.status == .reasserting || $0.status == .restarting }) {
-            widgetConnectedAt = nil
-            let status = VPNStatusData(
-                state: .connecting,
-                tunnelName: activatingTunnel.name,
-                connectedAt: nil,
-                isOnDemandEnabled: activatingTunnel.isActivateOnDemandEnabled,
-                hasOnDemandRules: activatingTunnel.hasOnDemandRules
-            )
-            VPNStatusData.save(status)
-        } else if let deactivatingTunnel = allTunnels.first(where: { $0.status == .deactivating }) {
-            widgetConnectedAt = nil
-            let status = VPNStatusData(
-                state: .disconnecting,
-                tunnelName: deactivatingTunnel.name,
-                connectedAt: nil
-            )
-            VPNStatusData.save(status)
-        } else {
-            widgetConnectedAt = nil
-            // When disconnected, report on-demand status from any configured tunnel
-            let onDemandTunnel = allTunnels.first(where: { $0.hasOnDemandRules })
-            let status = VPNStatusData(
-                state: .disconnected,
-                tunnelName: "",
-                connectedAt: nil,
-                isOnDemandEnabled: onDemandTunnel?.isActivateOnDemandEnabled,
-                hasOnDemandRules: onDemandTunnel != nil
-            )
-            VPNStatusData.save(status)
-        }
-        if #available(iOS 14.0, *) {
-            WidgetCenter.shared.reloadAllTimelines()
-        }
+        widgetStatusWriter.update(tunnels: allTunnels)
     }
     #endif
 
