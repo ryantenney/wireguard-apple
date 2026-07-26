@@ -22,6 +22,14 @@ enum TunnelGroupKind: String, CaseIterable {
         }
     }
 
+    /// Prefix used in log lines for this kind ("Failover" / "TiT").
+    var logPrefix: String {
+        switch self {
+        case .failover: return "Failover"
+        case .tunnelInTunnel: return "TiT"
+        }
+    }
+
     var groupIdKey: String {
         switch self {
         case .failover: return ProviderConfigurationKeys.failoverGroupId

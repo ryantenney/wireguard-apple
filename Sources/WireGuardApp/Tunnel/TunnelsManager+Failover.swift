@@ -35,74 +35,23 @@ extension TunnelsManager {
 
     /// Update any failover groups that reference a tunnel that was modified or renamed.
     func refreshFailoverGroupsContaining(tunnelName: String, oldName: String? = nil) {
-        for groupTunnel in failoverGroupTunnels {
-            guard let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-                  var configNames = proto.providerConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String] else {
-                continue
-            }
+        forEachGroupNeedingRefresh(kind: .failover, changedTunnelName: tunnelName) { groupTunnel, providerConfig in
+            guard var configNames = providerConfig[ProviderConfigurationKeys.failoverConfigNames] as? [String] else { return nil }
 
             let matchName = oldName ?? tunnelName
-            guard configNames.contains(matchName) else { continue }
+            guard configNames.contains(matchName) else { return nil }
 
             // Update the name if it was renamed
             if let oldName = oldName, let idx = configNames.firstIndex(of: oldName) {
                 configNames[idx] = tunnelName
             }
 
-            // Rebuild member keychain refs through the spec so unresolvable
-            // members fall back to their stored configs instead of being dropped.
-            let existingConfig = proto.providerConfiguration
-            let settings = (existingConfig?[ProviderConfigurationKeys.failoverSettings] as? Data)
+            let settings = (providerConfig[ProviderConfigurationKeys.failoverSettings] as? Data)
                 .flatMap { try? JSONDecoder().decode(FailoverSettings.self, from: $0) } ?? FailoverSettings()
-            let spec = FailoverGroupSpec(name: groupTunnel.name, tunnelNames: configNames,
-                                         settings: settings, onDemandActivation: OnDemandActivation())
-            guard let buildResult = spec.buildProviderConfiguration(tunnelsManager: self, existing: existingConfig) else {
-                wg_log(.error, message: "Failover: could not refresh group '\(groupTunnel.name)' after change to '\(tunnelName)'")
-                continue
-            }
-
-            // Refresh the group's own keychain copy of the primary config
-            if let primaryConfig = spec.sourceConfigString(from: self),
-               let passwordRef = Keychain.makeReference(containing: primaryConfig, called: groupTunnel.name, previouslyReferencedBy: proto.passwordReference) {
-                proto.passwordReference = passwordRef
-            }
-
-            proto.providerConfiguration = buildResult.providerConfiguration
-
-            // On iOS, saving any NE configuration can deactivate the currently
-            // active tunnel — same workaround as in modify()/modifyGroup().
-            #if os(iOS)
-            let activeTunnel = (tunnels + failoverGroupTunnels + titGroupTunnels).first { $0.status == .active || $0.status == .activating }
-            #endif
-
-            groupTunnel.tunnelProvider.saveToPreferences { [weak self] error in
-                if let error = error {
-                    wg_log(.error, message: "Failover: failed to save refreshed group '\(groupTunnel.name)': \(error)")
-                    buildResult.discardCreatedReferences()
-                    return
-                }
-                buildResult.deleteObsoleteReferences()
-                guard let self = self else { return }
-
-                #if os(iOS)
-                if let activeTunnel = activeTunnel, activeTunnel !== groupTunnel {
-                    if activeTunnel.status == .inactive || activeTunnel.status == .deactivating {
-                        self.startActivation(of: activeTunnel)
-                    }
-                    if activeTunnel.status == .active || activeTunnel.status == .activating {
-                        activeTunnel.status = .restarting
-                    }
-                }
-                #endif
-
-                if let index = self.failoverGroupTunnels.firstIndex(of: groupTunnel) {
-                    self.groupListDelegate?.groupModified(kind: .failover, at: index)
-                }
-                self.applyConfigurationToRunningGroup(groupTunnel)
-            }
+            return FailoverGroupSpec(name: groupTunnel.name, tunnelNames: configNames,
+                                     settings: settings, onDemandActivation: OnDemandActivation())
         }
     }
-
     // MARK: - Failover State Query
 
     /// Query the failover state from the active tunnel's network extension.

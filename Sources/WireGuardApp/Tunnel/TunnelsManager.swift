@@ -248,42 +248,31 @@ class TunnelsManager {
                 }
             }
 
-            // Reconcile failover group tunnels
-            for (index, currentGroup) in self.failoverGroupTunnels.enumerated().reversed() {
-                if !loadedFailoverGroups.contains(where: { $0.isEquivalentToFailoverGroup(currentGroup) }) {
-                    self.failoverGroupTunnels.remove(at: index)
-                    self.groupListDelegate?.groupRemoved(kind: .failover, at: index, tunnel: currentGroup)
-                }
-            }
-            for loadedProvider in loadedFailoverGroups {
-                if let matchingGroup = self.failoverGroupTunnels.first(where: { loadedProvider.isEquivalentToFailoverGroup($0) }) {
-                    matchingGroup.tunnelProvider = loadedProvider
-                    matchingGroup.refreshStatus()
-                } else {
-                    let groupTunnel = TunnelContainer(tunnel: loadedProvider)
-                    self.failoverGroupTunnels.append(groupTunnel)
-                    self.failoverGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-                    self.groupListDelegate?.groupAdded(kind: .failover, at: self.failoverGroupTunnels.firstIndex(of: groupTunnel)!)
-                }
-            }
+            // Reconcile group tunnels (same shape per kind)
+            self.reconcileGroups(kind: .failover, loaded: loadedFailoverGroups)
+            self.reconcileGroups(kind: .tunnelInTunnel, loaded: loadedTiTGroups)
+        }
+    }
 
-            // Reconcile TiT group tunnels
-            for (index, currentGroup) in self.titGroupTunnels.enumerated().reversed() {
-                if !loadedTiTGroups.contains(where: { $0.isEquivalentToTiTGroup(currentGroup) }) {
-                    self.titGroupTunnels.remove(at: index)
-                    self.groupListDelegate?.groupRemoved(kind: .tunnelInTunnel, at: index, tunnel: currentGroup)
-                }
+    /// Reconcile one group kind's array against freshly loaded managers:
+    /// remove vanished groups, refresh matching ones, add new ones.
+    private func reconcileGroups(kind: TunnelGroupKind, loaded: [NETunnelProviderManager]) {
+        let keyPath = groupArrayKeyPath(kind)
+        for (index, currentGroup) in self[keyPath: keyPath].enumerated().reversed() {
+            if !loaded.contains(where: { $0.isEquivalentToGroup(kind: kind, currentGroup) }) {
+                self[keyPath: keyPath].remove(at: index)
+                groupListDelegate?.groupRemoved(kind: kind, at: index, tunnel: currentGroup)
             }
-            for loadedProvider in loadedTiTGroups {
-                if let matchingGroup = self.titGroupTunnels.first(where: { loadedProvider.isEquivalentToTiTGroup($0) }) {
-                    matchingGroup.tunnelProvider = loadedProvider
-                    matchingGroup.refreshStatus()
-                } else {
-                    let groupTunnel = TunnelContainer(tunnel: loadedProvider)
-                    self.titGroupTunnels.append(groupTunnel)
-                    self.titGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-                    self.groupListDelegate?.groupAdded(kind: .tunnelInTunnel, at: self.titGroupTunnels.firstIndex(of: groupTunnel)!)
-                }
+        }
+        for loadedProvider in loaded {
+            if let matchingGroup = self[keyPath: keyPath].first(where: { loadedProvider.isEquivalentToGroup(kind: kind, $0) }) {
+                matchingGroup.tunnelProvider = loadedProvider
+                matchingGroup.refreshStatus()
+            } else {
+                let groupTunnel = TunnelContainer(tunnel: loadedProvider)
+                self[keyPath: keyPath].append(groupTunnel)
+                self[keyPath: keyPath].sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
+                groupListDelegate?.groupAdded(kind: kind, at: self[keyPath: keyPath].firstIndex(of: groupTunnel)!)
             }
         }
     }
@@ -705,11 +694,17 @@ class TunnelsManager {
 
     // MARK: - Group Accessors (unified)
 
-    func groupTunnels(kind: TunnelGroupKind) -> [TunnelContainer] {
+    /// Writable storage for a group kind's tunnel array — the single place
+    /// that maps kind to array, so CRUD/reload code doesn't switch on kind.
+    func groupArrayKeyPath(_ kind: TunnelGroupKind) -> ReferenceWritableKeyPath<TunnelsManager, [TunnelContainer]> {
         switch kind {
-        case .failover: return failoverGroupTunnels
-        case .tunnelInTunnel: return titGroupTunnels
+        case .failover: return \.failoverGroupTunnels
+        case .tunnelInTunnel: return \.titGroupTunnels
         }
+    }
+
+    func groupTunnels(kind: TunnelGroupKind) -> [TunnelContainer] {
+        return self[keyPath: groupArrayKeyPath(kind)]
     }
 
     func numberOfGroups(kind: TunnelGroupKind) -> Int {
@@ -1301,13 +1296,8 @@ extension NETunnelProviderManager {
         return localizedDescription == tunnel.name && tunnelConfiguration == tunnel.tunnelConfiguration
     }
 
-    func isEquivalentToFailoverGroup(_ tunnel: TunnelContainer) -> Bool {
-        let myGroupId = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[ProviderConfigurationKeys.failoverGroupId] as? String
-        return myGroupId != nil && myGroupId == tunnel.failoverGroupId
-    }
-
-    func isEquivalentToTiTGroup(_ tunnel: TunnelContainer) -> Bool {
-        let myGroupId = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[ProviderConfigurationKeys.titGroupId] as? String
-        return myGroupId != nil && myGroupId == tunnel.titGroupId
+    func isEquivalentToGroup(kind: TunnelGroupKind, _ tunnel: TunnelContainer) -> Bool {
+        let myGroupId = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[kind.groupIdKey] as? String
+        return myGroupId != nil && myGroupId == tunnel.groupId(for: kind)
     }
 }

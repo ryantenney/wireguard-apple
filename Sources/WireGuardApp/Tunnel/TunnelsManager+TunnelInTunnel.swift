@@ -35,17 +35,12 @@ extension TunnelsManager {
 
     /// Update any TiT groups that reference a tunnel that was modified or renamed.
     func refreshTiTGroupsContaining(tunnelName: String, oldName: String? = nil) {
-        for groupTunnel in titGroupTunnels {
-            guard let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-                  let providerConfig = proto.providerConfiguration else {
-                continue
-            }
-
+        forEachGroupNeedingRefresh(kind: .tunnelInTunnel, changedTunnelName: tunnelName) { groupTunnel, providerConfig in
             let matchName = oldName ?? tunnelName
             var outerName = providerConfig[ProviderConfigurationKeys.titOuterName] as? String ?? ""
             var innerName = providerConfig[ProviderConfigurationKeys.titInnerName] as? String ?? ""
 
-            guard outerName == matchName || innerName == matchName else { continue }
+            guard outerName == matchName || innerName == matchName else { return nil }
 
             // Update names if renamed
             if let oldName = oldName {
@@ -53,54 +48,8 @@ extension TunnelsManager {
                 if innerName == oldName { innerName = tunnelName }
             }
 
-            // Rebuild member keychain refs through the spec so unresolvable
-            // members keep their stored configs instead of going stale silently.
-            let spec = TiTGroupSpec(name: groupTunnel.name, outerTunnelName: outerName,
-                                    innerTunnelName: innerName, onDemandActivation: OnDemandActivation())
-            guard let buildResult = spec.buildProviderConfiguration(tunnelsManager: self, existing: providerConfig) else {
-                wg_log(.error, message: "TiT: could not refresh group '\(groupTunnel.name)' after change to '\(tunnelName)'")
-                continue
-            }
-
-            // Refresh the group's own keychain copy of the outer config
-            if let outerConfig = spec.sourceConfigString(from: self),
-               let passwordRef = Keychain.makeReference(containing: outerConfig, called: groupTunnel.name, previouslyReferencedBy: proto.passwordReference) {
-                proto.passwordReference = passwordRef
-            }
-
-            proto.providerConfiguration = buildResult.providerConfiguration
-
-            // On iOS, saving any NE configuration can deactivate the currently
-            // active tunnel — same workaround as in modify()/modifyGroup().
-            #if os(iOS)
-            let activeTunnel = (tunnels + failoverGroupTunnels + titGroupTunnels).first { $0.status == .active || $0.status == .activating }
-            #endif
-
-            groupTunnel.tunnelProvider.saveToPreferences { [weak self] error in
-                if let error = error {
-                    wg_log(.error, message: "TiT: failed to save refreshed group '\(groupTunnel.name)': \(error)")
-                    buildResult.discardCreatedReferences()
-                    return
-                }
-                buildResult.deleteObsoleteReferences()
-                guard let self = self else { return }
-
-                #if os(iOS)
-                if let activeTunnel = activeTunnel, activeTunnel !== groupTunnel {
-                    if activeTunnel.status == .inactive || activeTunnel.status == .deactivating {
-                        self.startActivation(of: activeTunnel)
-                    }
-                    if activeTunnel.status == .active || activeTunnel.status == .activating {
-                        activeTunnel.status = .restarting
-                    }
-                }
-                #endif
-
-                if let index = self.titGroupTunnels.firstIndex(of: groupTunnel) {
-                    self.groupListDelegate?.groupModified(kind: .tunnelInTunnel, at: index)
-                }
-                self.applyConfigurationToRunningGroup(groupTunnel)
-            }
+            return TiTGroupSpec(name: groupTunnel.name, outerTunnelName: outerName,
+                                innerTunnelName: innerName, onDemandActivation: OnDemandActivation())
         }
     }
 

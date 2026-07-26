@@ -325,15 +325,10 @@ extension TunnelsManager {
             #endif
 
             let groupTunnel = TunnelContainer(tunnel: tunnelProviderManager)
-            switch kind {
-            case .failover:
-                self.failoverGroupTunnels.append(groupTunnel)
-                self.failoverGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-            case .tunnelInTunnel:
-                self.titGroupTunnels.append(groupTunnel)
-                self.titGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-            }
-            self.groupListDelegate?.groupAdded(kind: kind, at: self.groupTunnels(kind: kind).firstIndex(of: groupTunnel)!)
+            let keyPath = self.groupArrayKeyPath(kind)
+            self[keyPath: keyPath].append(groupTunnel)
+            self[keyPath: keyPath].sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
+            self.groupListDelegate?.groupAdded(kind: kind, at: self[keyPath: keyPath].firstIndex(of: groupTunnel)!)
             completionHandler(.success(groupTunnel))
         }
     }
@@ -431,15 +426,10 @@ extension TunnelsManager {
             #endif
 
             if isNameChanged {
-                let groupList = self.groupTunnels(kind: kind)
-                let oldIndex = groupList.firstIndex(of: tunnel)!
-                switch kind {
-                case .failover:
-                    self.failoverGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-                case .tunnelInTunnel:
-                    self.titGroupTunnels.sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
-                }
-                let newIndex = self.groupTunnels(kind: kind).firstIndex(of: tunnel)!
+                let keyPath = self.groupArrayKeyPath(kind)
+                let oldIndex = self[keyPath: keyPath].firstIndex(of: tunnel)!
+                self[keyPath: keyPath].sort { TunnelsManager.tunnelNameIsLessThan($0.name, $1.name) }
+                let newIndex = self[keyPath: keyPath].firstIndex(of: tunnel)!
                 self.groupListDelegate?.groupMoved(kind: kind, from: oldIndex, to: newIndex)
                 OnDemandSuspensionStore.handleTunnelRenamed(from: oldName, to: spec.name)
             }
@@ -489,17 +479,10 @@ extension TunnelsManager {
                 Keychain.deleteReference(called: ref)
             }
             if let self = self {
-                switch kind {
-                case .failover:
-                    if let index = self.failoverGroupTunnels.firstIndex(of: tunnel) {
-                        self.failoverGroupTunnels.remove(at: index)
-                        self.groupListDelegate?.groupRemoved(kind: kind, at: index, tunnel: tunnel)
-                    }
-                case .tunnelInTunnel:
-                    if let index = self.titGroupTunnels.firstIndex(of: tunnel) {
-                        self.titGroupTunnels.remove(at: index)
-                        self.groupListDelegate?.groupRemoved(kind: kind, at: index, tunnel: tunnel)
-                    }
+                let keyPath = self.groupArrayKeyPath(kind)
+                if let index = self[keyPath: keyPath].firstIndex(of: tunnel) {
+                    self[keyPath: keyPath].remove(at: index)
+                    self.groupListDelegate?.groupRemoved(kind: kind, at: index, tunnel: tunnel)
                 }
             }
             OnDemandSuspensionStore.remove(tunnel.name)
@@ -637,6 +620,70 @@ extension TunnelsManager {
             refreshFailoverGroupsContaining(tunnelName: tunnelName, oldName: oldName)
         case .tunnelInTunnel:
             refreshTiTGroupsContaining(tunnelName: tunnelName, oldName: oldName)
+        }
+    }
+
+    /// Shared skeleton of the per-kind group refresh: iterate the kind's
+    /// groups and let `makeSpec` decide whether this group references the
+    /// changed tunnel, returning the rebuilt spec (or nil to skip). The
+    /// kind-specific membership schema stays in the caller's closure; the
+    /// rebuild, keychain bookkeeping, save and notify are shared.
+    func forEachGroupNeedingRefresh(kind: TunnelGroupKind,
+                                    changedTunnelName: String,
+                                    makeSpec: (TunnelContainer, [String: Any]) -> TunnelGroupSpec?) {
+        for groupTunnel in groupTunnels(kind: kind) {
+            guard let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
+                  let providerConfig = proto.providerConfiguration,
+                  let spec = makeSpec(groupTunnel, providerConfig) else {
+                continue
+            }
+
+            // Rebuild member keychain refs through the spec so unresolvable
+            // members keep their stored configs instead of going stale silently.
+            guard let buildResult = spec.buildProviderConfiguration(tunnelsManager: self, existing: providerConfig) else {
+                wg_log(.error, message: "\(kind.logPrefix): could not refresh group '\(groupTunnel.name)' after change to '\(changedTunnelName)'")
+                continue
+            }
+
+            // Refresh the group's own keychain copy of the primary/outer config
+            if let sourceConfig = spec.sourceConfigString(from: self),
+               let passwordRef = Keychain.makeReference(containing: sourceConfig, called: groupTunnel.name, previouslyReferencedBy: proto.passwordReference) {
+                proto.passwordReference = passwordRef
+            }
+
+            proto.providerConfiguration = buildResult.providerConfiguration
+
+            // On iOS, saving any NE configuration can deactivate the currently
+            // active tunnel — same workaround as in modify()/modifyGroup().
+            #if os(iOS)
+            let activeTunnel = (tunnels + failoverGroupTunnels + titGroupTunnels).first { $0.status == .active || $0.status == .activating }
+            #endif
+
+            groupTunnel.tunnelProvider.saveToPreferences { [weak self] error in
+                if let error = error {
+                    wg_log(.error, message: "\(kind.logPrefix): failed to save refreshed group '\(groupTunnel.name)': \(error)")
+                    buildResult.discardCreatedReferences()
+                    return
+                }
+                buildResult.deleteObsoleteReferences()
+                guard let self = self else { return }
+
+                #if os(iOS)
+                if let activeTunnel = activeTunnel, activeTunnel !== groupTunnel {
+                    if activeTunnel.status == .inactive || activeTunnel.status == .deactivating {
+                        self.startActivation(of: activeTunnel)
+                    }
+                    if activeTunnel.status == .active || activeTunnel.status == .activating {
+                        activeTunnel.status = .restarting
+                    }
+                }
+                #endif
+
+                if let index = self.groupIndex(kind: kind, of: groupTunnel) {
+                    self.groupListDelegate?.groupModified(kind: kind, at: index)
+                }
+                self.applyConfigurationToRunningGroup(groupTunnel)
+            }
         }
     }
 
