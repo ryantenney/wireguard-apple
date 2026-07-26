@@ -290,7 +290,7 @@ extension TunnelsManager {
 
         var finalConfig = buildResult.providerConfiguration
         #if os(macOS)
-        finalConfig["UID"] = getuid()
+        finalConfig[ProviderConfigurationKeys.uid] = getuid()
         #endif
         finalConfig[spec.groupKind.groupIdKey] = groupId
         proto.providerConfiguration = finalConfig

@@ -134,13 +134,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // the warm spare interplay with config switching is not designed yet.
         var warmSpareSettings: WarmSpareSettings?
         if failoverConfigs.count <= 1,
-           let settingsData = providerConfig?["WarmSpareSettings"] as? Data,
+           let settingsData = providerConfig?[ProviderConfigurationKeys.warmSpareSettings] as? Data,
            let decoded = try? JSONDecoder().decode(WarmSpareSettings.self, from: settingsData) {
             if decoded.enabled {
                 warmSpareSettings = decoded
                 wg_log(.info, message: "Warm spare: enabled (adaptive=\(decoded.adaptiveWarming), probePort=\(decoded.probePort))")
             }
-        } else if failoverConfigs.count > 1, providerConfig?["WarmSpareSettings"] != nil {
+        } else if failoverConfigs.count > 1, providerConfig?[ProviderConfigurationKeys.warmSpareSettings] != nil {
             wg_log(.info, message: "Warm spare: configured but ignored for failover groups")
         }
 

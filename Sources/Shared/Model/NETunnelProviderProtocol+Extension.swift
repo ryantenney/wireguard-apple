@@ -26,13 +26,13 @@ extension NETunnelProviderProtocol {
         // protocol (warm spare settings today, any future keys by default) —
         // a tunnel edit must not silently drop feature state. Only the keys
         // this init owns are refreshed or removed:
-        //  - "WgQuickConfig": legacy inline config, superseded by the
+        //  - ProviderConfigurationKeys.wgQuickConfig: legacy inline config, superseded by the
         //    keychain reference created above; a stale copy must not linger.
-        //  - "UID" (macOS): always stamped for the current user.
+        //  - ProviderConfigurationKeys.uid (macOS): always stamped for the current user.
         var config = (old as? NETunnelProviderProtocol)?.providerConfiguration ?? [:]
-        config.removeValue(forKey: "WgQuickConfig")
+        config.removeValue(forKey: ProviderConfigurationKeys.wgQuickConfig)
         #if os(macOS)
-        config["UID"] = getuid()
+        config[ProviderConfigurationKeys.uid] = getuid()
         #endif
         providerConfiguration = config.isEmpty ? nil : config
 
@@ -51,7 +51,7 @@ extension NETunnelProviderProtocol {
             let config = Keychain.openReference(called: passwordReference) {
             return try? TunnelConfiguration(fromWgQuickConfig: config, called: name)
         }
-        if let oldConfig = providerConfiguration?["WgQuickConfig"] as? String {
+        if let oldConfig = providerConfiguration?[ProviderConfigurationKeys.wgQuickConfig] as? String {
             return try? TunnelConfiguration(fromWgQuickConfig: oldConfig, called: name)
         }
         return nil
@@ -73,9 +73,9 @@ extension NETunnelProviderProtocol {
          * in the keychain. But it's still useful to keep the migration
          * around so that .mobileconfig files are easier.
          */
-        if let oldConfig = providerConfiguration?["WgQuickConfig"] as? String {
+        if let oldConfig = providerConfiguration?[ProviderConfigurationKeys.wgQuickConfig] as? String {
             #if os(macOS)
-            providerConfiguration = ["UID": getuid()]
+            providerConfiguration = [ProviderConfigurationKeys.uid: getuid()]
             #elseif os(iOS)
             providerConfiguration = nil
             #else
@@ -87,8 +87,8 @@ extension NETunnelProviderProtocol {
             return true
         }
         #if os(macOS)
-        if passwordReference != nil && providerConfiguration?["UID"] == nil && verifyConfigurationReference() {
-            providerConfiguration = ["UID": getuid()]
+        if passwordReference != nil && providerConfiguration?[ProviderConfigurationKeys.uid] == nil && verifyConfigurationReference() {
+            providerConfiguration = [ProviderConfigurationKeys.uid: getuid()]
             return true
         }
         #elseif os(iOS)

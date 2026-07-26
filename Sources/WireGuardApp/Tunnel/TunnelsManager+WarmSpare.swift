@@ -10,14 +10,12 @@ import NetworkExtension
 // See `DESIGN-warm-spare-cellular-failover.md`.
 extension TunnelsManager {
 
-    static let warmSpareSettingsKey = "WarmSpareSettings"
-
     // MARK: - Settings persistence
 
     /// Warm spare settings stored for a tunnel, or `nil` if never configured.
     func warmSpareSettings(for tunnel: TunnelContainer) -> WarmSpareSettings? {
         guard let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-              let data = proto.providerConfiguration?[Self.warmSpareSettingsKey] as? Data else {
+              let data = proto.providerConfiguration?[ProviderConfigurationKeys.warmSpareSettings] as? Data else {
             return nil
         }
         return try? JSONDecoder().decode(WarmSpareSettings.self, from: data)
@@ -33,9 +31,9 @@ extension TunnelsManager {
         }
         var config = proto.providerConfiguration ?? [:]
         if let settings = settings, let data = try? JSONEncoder().encode(settings) {
-            config[Self.warmSpareSettingsKey] = data
+            config[ProviderConfigurationKeys.warmSpareSettings] = data
         } else {
-            config.removeValue(forKey: Self.warmSpareSettingsKey)
+            config.removeValue(forKey: ProviderConfigurationKeys.warmSpareSettings)
         }
         proto.providerConfiguration = config
         tunnel.tunnelProvider.saveToPreferences { error in

@@ -108,7 +108,7 @@ class TunnelsManager {
                 let passwordRef = proto.verifyConfigurationReference() ? proto.passwordReference : nil
                 #elseif os(macOS)
                 let passwordRef: Data?
-                if proto.providerConfiguration?["UID"] as? uid_t == getuid() {
+                if proto.providerConfiguration?[ProviderConfigurationKeys.uid] as? uid_t == getuid() {
                     passwordRef = proto.verifyConfigurationReference() ? proto.passwordReference : nil
                 } else {
                     passwordRef = proto.passwordReference // To handle multiple users in macOS, we skip verifying
@@ -1164,7 +1164,7 @@ class TunnelContainer: NSObject {
 
     #if os(macOS)
     var isTunnelAvailableToUser: Bool {
-        return (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["UID"] as? uid_t == getuid()
+        return (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[ProviderConfigurationKeys.uid] as? uid_t == getuid()
     }
     #endif
 
