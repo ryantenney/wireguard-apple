@@ -27,6 +27,15 @@ schemes:
     analyze:
       config: Debug
 
+  WireGuardKitTests:
+    build:
+      targets:
+        WireGuardKitTests: all
+    test:
+      config: Debug
+      targets:
+        - WireGuardKitTests
+
 options:
   createIntermediateGroups: true
   deploymentTarget:
@@ -451,3 +460,20 @@ targets:
           mkdir -p "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems"
           ditto "${BUILT_PRODUCTS_DIR}/WireGuardLoginItemHelper.app" "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems/WireGuardLoginItemHelper.app"
         basedOnDependencyAnalysis: false
+
+  # ─── Unit tests (pure logic; no Go bridge, no NetworkExtension) ───────
+
+  WireGuardKitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/WireGuardKitTests
+      - path: Sources/WireGuardKit/UAPI.swift
+      - path: Sources/WireGuardKit/PathPolicy.swift
+      - path: Sources/WireGuardKit/FailoverSettings.swift
+      - path: Sources/WireGuardKit/WarmSpareSettings.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_ID_MACOS).kit-tests
+        SWIFT_OBJC_BRIDGING_HEADER: ""
+        CODE_SIGN_IDENTITY: "-"
