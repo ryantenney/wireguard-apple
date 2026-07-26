@@ -73,10 +73,13 @@ type tunnelHandle struct {
 	*device.Logger
 }
 
-// handlesMu guards tunnelHandles, probeHandles, and titHandles. The Swift
-// adapter serializes all bridge calls on one queue today, but unsynchronized
-// Go map writes are a hard runtime crash if that invariant is ever broken
-// (e.g. a second adapter instance), so the registries lock defensively.
+// handlesMu guards the four handle maps (tunnelHandles, probeHandles,
+// titHandles, warmSpareControllers). Entry points are normally serialized by
+// the Swift adapter's work queue, but WireGuardAdapter.deinit runs on the
+// deallocating thread, and unsynchronized Go map writes are a hard runtime
+// crash if that serialization is ever broken (e.g. a second adapter
+// instance) — so the registries lock defensively. Never held across blocking
+// device calls.
 var handlesMu sync.Mutex
 
 var tunnelHandles = make(map[int32]tunnelHandle)
@@ -109,8 +112,6 @@ func wgSetLogger(context, loggerFn uintptr) {
 
 //export wgTurnOn
 func wgTurnOn(settings *C.char, tunFd int32) int32 {
-	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	logger := &device.Logger{
 		Verbosef: CLogger(0).Printf,
 		Errorf:   CLogger(1).Printf,
@@ -148,6 +149,7 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 	dev.Up()
 	logger.Verbosef("Device started")
 
+	handlesMu.Lock()
 	var i int32
 	for i = 0; i < math.MaxInt32; i++ {
 		if _, exists := tunnelHandles[i]; !exists {
@@ -155,24 +157,30 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 		}
 	}
 	if i == math.MaxInt32 {
+		handlesMu.Unlock()
 		dev.Close()
 		return -1
 	}
 	tunnelHandles[i] = tunnelHandle{dev, logger}
+	handlesMu.Unlock()
 	return i
 }
 
 //export wgTurnOff
 func wgTurnOff(tunnelHandle int32) {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	dev, ok := tunnelHandles[tunnelHandle]
 	if !ok {
+		handlesMu.Unlock()
 		return
 	}
 	delete(tunnelHandles, tunnelHandle)
-	if ctrl, ok := warmSpareControllers[tunnelHandle]; ok {
+	ctrl, hasCtrl := warmSpareControllers[tunnelHandle]
+	if hasCtrl {
 		delete(warmSpareControllers, tunnelHandle)
+	}
+	handlesMu.Unlock()
+	if hasCtrl {
 		ctrl.stop()
 	}
 	dev.Close()
@@ -181,8 +189,8 @@ func wgTurnOff(tunnelHandle int32) {
 //export wgSetConfig
 func wgSetConfig(tunnelHandle int32, settings *C.char) int64 {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	dev, ok := tunnelHandles[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return -1
 	}
@@ -200,8 +208,8 @@ func wgSetConfig(tunnelHandle int32, settings *C.char) int64 {
 //export wgGetConfig
 func wgGetConfig(tunnelHandle int32) *C.char {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	device, ok := tunnelHandles[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return nil
 	}
@@ -215,8 +223,8 @@ func wgGetConfig(tunnelHandle int32) *C.char {
 //export wgBumpSockets
 func wgBumpSockets(tunnelHandle int32) {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	dev, ok := tunnelHandles[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return
 	}
@@ -237,8 +245,8 @@ func wgBumpSockets(tunnelHandle int32) {
 //export wgDisableSomeRoamingForBrokenMobileSemantics
 func wgDisableSomeRoamingForBrokenMobileSemantics(tunnelHandle int32) {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	dev, ok := tunnelHandles[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return
 	}
@@ -459,8 +467,6 @@ var probeHandles = make(map[int32]probeHandle)
 
 //export wgProbeOn
 func wgProbeOn(settings *C.char, keepaliveOverride int32) int32 {
-	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	logger := &device.Logger{
 		Verbosef: CLogger(0).Printf,
 		Errorf:   CLogger(1).Printf,
@@ -486,6 +492,7 @@ func wgProbeOn(settings *C.char, keepaliveOverride int32) int32 {
 	dev.Up()
 	logger.Verbosef("Probe: device started")
 
+	handlesMu.Lock()
 	var i int32
 	for i = 0; i < math.MaxInt32; i++ {
 		if _, exists := probeHandles[i]; !exists {
@@ -493,30 +500,33 @@ func wgProbeOn(settings *C.char, keepaliveOverride int32) int32 {
 		}
 	}
 	if i == math.MaxInt32 {
+		handlesMu.Unlock()
 		dev.Close()
 		return -1
 	}
 	probeHandles[i] = probeHandle{dev, logger, swappable}
+	handlesMu.Unlock()
 	return i
 }
 
 //export wgProbeOff
 func wgProbeOff(handle int32) {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := probeHandles[handle]
 	if !ok {
+		handlesMu.Unlock()
 		return
 	}
 	delete(probeHandles, handle)
+	handlesMu.Unlock()
 	h.Close()
 }
 
 //export wgProbeGetConfig
 func wgProbeGetConfig(handle int32) *C.char {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := probeHandles[handle]
+	handlesMu.Unlock()
 	if !ok {
 		return nil
 	}
@@ -530,8 +540,8 @@ func wgProbeGetConfig(handle int32) *C.char {
 //export wgProbeSetConfig
 func wgProbeSetConfig(handle int32, settings *C.char) int64 {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := probeHandles[handle]
+	handlesMu.Unlock()
 	if !ok {
 		return -1
 	}
@@ -549,8 +559,8 @@ func wgProbeSetConfig(handle int32, settings *C.char) int64 {
 //export wgProbeBumpSockets
 func wgProbeBumpSockets(handle int32) {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := probeHandles[handle]
+	handlesMu.Unlock()
 	if !ok {
 		return
 	}
@@ -571,8 +581,8 @@ func wgProbeBumpSockets(handle int32) {
 //export wgProbePromote
 func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := probeHandles[probeHandleID]
+	handlesMu.Unlock()
 	if !ok {
 		return -1
 	}
@@ -602,6 +612,7 @@ func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
 	h.Verbosef("Probe promote: swapped null tun for real utun — session preserved")
 
 	// Remove from probeHandles and add to tunnelHandles.
+	handlesMu.Lock()
 	delete(probeHandles, probeHandleID)
 
 	var i int32
@@ -611,12 +622,14 @@ func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
 		}
 	}
 	if i == math.MaxInt32 {
+		handlesMu.Unlock()
 		h.Errorf("Probe promote: no free tunnel handle slot")
 		h.Close()
 		return -1
 	}
 
 	tunnelHandles[i] = tunnelHandle{h.Device, h.Logger}
+	handlesMu.Unlock()
 	h.Verbosef("Probe promote: probe %d → tunnel %d", probeHandleID, i)
 	return i
 }
@@ -690,6 +703,7 @@ func wgTurnOnWarm(settings *C.char, probeAddr *C.char, probePort int32, keepaliv
 		return -1
 	}
 
+	handlesMu.Lock()
 	var i int32
 	for i = 0; i < math.MaxInt32; i++ {
 		if _, exists := tunnelHandles[i]; !exists {
@@ -697,12 +711,14 @@ func wgTurnOnWarm(settings *C.char, probeAddr *C.char, probePort int32, keepaliv
 		}
 	}
 	if i == math.MaxInt32 {
+		handlesMu.Unlock()
 		ctrl.stop()
 		dev.Close()
 		return -1
 	}
 	tunnelHandles[i] = tunnelHandle{dev, logger}
 	warmSpareControllers[i] = ctrl
+	handlesMu.Unlock()
 	return i
 }
 
@@ -711,7 +727,9 @@ func wgTurnOnWarm(settings *C.char, probeAddr *C.char, probePort int32, keepaliv
 //
 //export wgWarmSetCellular
 func wgWarmSetCellular(tunnelHandle int32, ifindex int32) int32 {
+	handlesMu.Lock()
 	ctrl, ok := warmSpareControllers[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return -1
 	}
@@ -726,7 +744,9 @@ func wgWarmSetCellular(tunnelHandle int32, ifindex int32) int32 {
 //
 //export wgWarmClearCellular
 func wgWarmClearCellular(tunnelHandle int32) {
+	handlesMu.Lock()
 	ctrl, ok := warmSpareControllers[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return
 	}
@@ -739,7 +759,9 @@ func wgWarmClearCellular(tunnelHandle int32) {
 //
 //export wgWarmSetActivePath
 func wgWarmSetActivePath(tunnelHandle int32, path int32) int32 {
+	handlesMu.Lock()
 	ctrl, ok := warmSpareControllers[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return -1
 	}
@@ -757,7 +779,9 @@ func wgWarmSetActivePath(tunnelHandle int32, path int32) int32 {
 //
 //export wgWarmSetPrimaryProbing
 func wgWarmSetPrimaryProbing(tunnelHandle int32, enabled int32) {
+	handlesMu.Lock()
 	ctrl, ok := warmSpareControllers[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return
 	}
@@ -769,7 +793,9 @@ func wgWarmSetPrimaryProbing(tunnelHandle int32, enabled int32) {
 //
 //export wgWarmGetState
 func wgWarmGetState(tunnelHandle int32) *C.char {
+	handlesMu.Lock()
 	ctrl, ok := warmSpareControllers[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return nil
 	}
@@ -782,7 +808,9 @@ func wgWarmGetState(tunnelHandle int32) *C.char {
 //
 //export wgWarmStartEimTest
 func wgWarmStartEimTest(tunnelHandle int32) int32 {
+	handlesMu.Lock()
 	ctrl, ok := warmSpareControllers[tunnelHandle]
+	handlesMu.Unlock()
 	if !ok {
 		return -1
 	}
@@ -1130,8 +1158,6 @@ var titHandles = make(map[int32]titHandle)
 
 //export wgTurnOnTiT
 func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *C.char, tunFd int32) int32 {
-	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	innerLogger := &device.Logger{
 		Verbosef: CLogger(0).Printf,
 		Errorf:   CLogger(1).Printf,
@@ -1202,6 +1228,7 @@ func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *
 	innerDev.Up()
 	innerLogger.Verbosef("TiT: devices started")
 
+	handlesMu.Lock()
 	var i int32
 	for i = 0; i < math.MaxInt32; i++ {
 		if _, exists := titHandles[i]; !exists {
@@ -1209,23 +1236,26 @@ func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *
 		}
 	}
 	if i == math.MaxInt32 {
+		handlesMu.Unlock()
 		innerDev.Close()
 		outerDev.Close()
 		return -1
 	}
 	titHandles[i] = titHandle{innerDev, innerLogger, outerDev, outerLogger, tunnel}
+	handlesMu.Unlock()
 	return i
 }
 
 //export wgTurnOffTiT
 func wgTurnOffTiT(handle int32) {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
 	if !ok {
+		handlesMu.Unlock()
 		return
 	}
 	delete(titHandles, handle)
+	handlesMu.Unlock()
 	h.innerDev.Close()
 	h.outerDev.Close()
 }
@@ -1233,8 +1263,8 @@ func wgTurnOffTiT(handle int32) {
 //export wgGetConfigTiT
 func wgGetConfigTiT(handle int32) *C.char {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
+	handlesMu.Unlock()
 	if !ok {
 		return nil
 	}
@@ -1248,8 +1278,8 @@ func wgGetConfigTiT(handle int32) *C.char {
 //export wgGetOuterConfigTiT
 func wgGetOuterConfigTiT(handle int32) *C.char {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
+	handlesMu.Unlock()
 	if !ok {
 		return nil
 	}
@@ -1263,8 +1293,8 @@ func wgGetOuterConfigTiT(handle int32) *C.char {
 //export wgSetInnerConfigTiT
 func wgSetInnerConfigTiT(handle int32, settings *C.char) int64 {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
+	handlesMu.Unlock()
 	if !ok {
 		return -1
 	}
@@ -1281,8 +1311,8 @@ func wgSetInnerConfigTiT(handle int32, settings *C.char) int64 {
 //export wgBumpSocketsTiT
 func wgBumpSocketsTiT(handle int32) {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
+	handlesMu.Unlock()
 	if !ok {
 		return
 	}
@@ -1302,8 +1332,8 @@ func wgBumpSocketsTiT(handle int32) {
 //export wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT
 func wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle int32) {
 	handlesMu.Lock()
-	defer handlesMu.Unlock()
 	h, ok := titHandles[handle]
+	handlesMu.Unlock()
 	if !ok {
 		return
 	}
