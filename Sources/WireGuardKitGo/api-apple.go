@@ -38,8 +38,16 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 )
 
-var loggerFunc unsafe.Pointer
-var loggerCtx unsafe.Pointer
+// loggerState bundles the Swift log callback and its context so both are
+// published in one atomic store: wgSetLogger is called from Swift threads
+// (including wgSetLogger(nil, nil) during adapter teardown) while every
+// wireguard-go and warm-spare goroutine reads them through CLogger.Printf.
+type loggerState struct {
+	fn  unsafe.Pointer
+	ctx unsafe.Pointer
+}
+
+var loggerHandle atomic.Pointer[loggerState]
 
 type CLogger int
 
@@ -53,10 +61,11 @@ func cstring(s string) *C.char {
 }
 
 func (l CLogger) Printf(format string, args ...interface{}) {
-	if uintptr(loggerFunc) == 0 {
+	state := loggerHandle.Load()
+	if state == nil || uintptr(state.fn) == 0 {
 		return
 	}
-	C.callLogger(loggerFunc, loggerCtx, C.int(l), cstring(fmt.Sprintf(format, args...)))
+	C.callLogger(state.fn, state.ctx, C.int(l), cstring(fmt.Sprintf(format, args...)))
 }
 
 type tunnelHandle struct {
@@ -82,8 +91,8 @@ func init() {
 			case <-signals:
 				n := runtime.Stack(buf, true)
 				buf[n] = 0
-				if uintptr(loggerFunc) != 0 {
-					C.callLogger(loggerFunc, loggerCtx, 0, (*C.char)(unsafe.Pointer(&buf[0])))
+				if state := loggerHandle.Load(); state != nil && uintptr(state.fn) != 0 {
+					C.callLogger(state.fn, state.ctx, 0, (*C.char)(unsafe.Pointer(&buf[0])))
 				}
 			}
 		}
@@ -92,8 +101,10 @@ func init() {
 
 //export wgSetLogger
 func wgSetLogger(context, loggerFn uintptr) {
-	loggerCtx = unsafe.Pointer(context)
-	loggerFunc = unsafe.Pointer(loggerFn)
+	loggerHandle.Store(&loggerState{
+		fn:  unsafe.Pointer(loggerFn),
+		ctx: unsafe.Pointer(context),
+	})
 }
 
 //export wgTurnOn
