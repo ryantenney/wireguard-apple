@@ -28,7 +28,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -181,18 +180,7 @@ func wgBumpSockets(tunnelHandle int32) {
 	if !ok {
 		return
 	}
-	go func() {
-		for i := 0; i < 10; i++ {
-			err := dev.BindUpdate()
-			if err == nil {
-				dev.SendKeepalivesToPeersWithCurrentKeypair()
-				return
-			}
-			dev.Errorf("Unable to update bind, try %d: %v", i+1, err)
-			time.Sleep(time.Second / 2)
-		}
-		dev.Errorf("Gave up trying to update bind; tunnel is likely dysfunctional")
-	}()
+	bumpSocketsRetry(dev.Device, dev.Logger, "Tunnel")
 }
 
 //export wgDisableSomeRoamingForBrokenMobileSemantics
@@ -496,18 +484,7 @@ func wgProbeBumpSockets(handle int32) {
 	if !ok {
 		return
 	}
-	go func() {
-		for i := 0; i < 10; i++ {
-			err := h.BindUpdate()
-			if err == nil {
-				h.SendKeepalivesToPeersWithCurrentKeypair()
-				return
-			}
-			h.Errorf("Probe: unable to update bind, try %d: %v", i+1, err)
-			time.Sleep(time.Second / 2)
-		}
-		h.Errorf("Probe: gave up trying to update bind")
-	}()
+	bumpSocketsRetry(h.Device, h.Logger, "Probe")
 }
 
 //export wgProbePromote
@@ -1168,17 +1145,7 @@ func wgBumpSocketsTiT(handle int32) {
 	if !ok {
 		return
 	}
-	go func() {
-		for i := 0; i < 10; i++ {
-			if err := h.outerDev.BindUpdate(); err == nil {
-				h.outerDev.SendKeepalivesToPeersWithCurrentKeypair()
-				return
-			}
-			h.outerLogger.Errorf("TiT: unable to update bind, try %d", i+1)
-			time.Sleep(time.Second / 2)
-		}
-		h.outerLogger.Errorf("TiT: gave up trying to update bind")
-	}()
+	bumpSocketsRetry(h.outerDev, h.outerLogger, "TiT")
 }
 
 //export wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT

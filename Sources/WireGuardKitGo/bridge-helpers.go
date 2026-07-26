@@ -13,10 +13,31 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"golang.org/x/sys/unix"
+	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
 )
+
+// bumpSocketsRetry rebinds the device's UDP sockets after a network change,
+// retrying for up to five seconds, then sends keepalives with the current
+// keypair so the peer re-learns the new source address. Asynchronous.
+// name prefixes log lines ("Tunnel", "Probe", "TiT").
+func bumpSocketsRetry(dev *device.Device, logger *device.Logger, name string) {
+	go func() {
+		for i := 0; i < 10; i++ {
+			err := dev.BindUpdate()
+			if err == nil {
+				dev.SendKeepalivesToPeersWithCurrentKeypair()
+				return
+			}
+			logger.Errorf("%s: unable to update bind, try %d: %v", name, i+1, err)
+			time.Sleep(time.Second / 2)
+		}
+		logger.Errorf("%s: gave up trying to update bind; tunnel is likely dysfunctional", name)
+	}()
+}
 
 // dupTUNFile duplicates the packet tunnel provider's utun fd, marks it
 // non-blocking, and wraps it in a tun.Device. Nothing is leaked on error.
