@@ -66,22 +66,18 @@ public class WireGuardAdapter {
     private var state: State = .stopped
 
     /// Connection health monitor for failover between tunnel configurations.
-    /// Written by the packet tunnel provider (start/stop) and read on the
-    /// adapter's queue and IPC paths, so access is lock-protected.
-    public var healthMonitor: ConnectionHealthMonitor? {
-        get {
-            healthMonitorLock.lock()
-            defer { healthMonitorLock.unlock() }
-            return _healthMonitor
-        }
-        set {
-            healthMonitorLock.lock()
-            defer { healthMonitorLock.unlock() }
-            _healthMonitor = newValue
+    /// Written via `setHealthMonitor(_:)` and read on `workQueue` only — the
+    /// provider keeps its own reference for lifecycle and IPC use. Queue
+    /// confinement replaces the lock-guarded property this used to be: every
+    /// read (`didReceivePathUpdate`) already runs on `workQueue`.
+    public private(set) var healthMonitor: ConnectionHealthMonitor?
+
+    /// Install (or clear) the health monitor on the adapter's work queue.
+    public func setHealthMonitor(_ monitor: ConnectionHealthMonitor?) {
+        workQueue.async {
+            self.healthMonitor = monitor
         }
     }
-    private var _healthMonitor: ConnectionHealthMonitor?
-    private let healthMonitorLock = NSLock()
 
     /// Stored OUTER settings generator for TiT restart after iOS offline/online transitions.
     private var titOuterSettingsGenerator: PacketTunnelSettingsGenerator?
@@ -913,17 +909,19 @@ public class WireGuardAdapter {
     /// controller's state machine snapshot. `nil` when warm spare is not
     /// engaged for this tunnel.
     public func getWarmSpareStatus(completionHandler: @escaping ([String: Any]?) -> Void) {
-        guard let controller = pathController else {
-            completionHandler(nil)
-            return
-        }
-        warmSpareFetchState { goState in
-            var merged = goState ?? [:]
-            controller.snapshot { snapshot in
-                for (key, value) in snapshot {
-                    merged[key] = value
+        workQueue.async {
+            guard let controller = self.pathController else {
+                completionHandler(nil)
+                return
+            }
+            self.warmSpareFetchState { goState in
+                var merged = goState ?? [:]
+                controller.snapshot { snapshot in
+                    for (key, value) in snapshot {
+                        merged[key] = value
+                    }
+                    completionHandler(merged)
                 }
-                completionHandler(merged)
             }
         }
     }
@@ -933,24 +931,28 @@ public class WireGuardAdapter {
     /// starts the test after a short settling delay. The verdict lands in
     /// `getWarmSpareStatus` within a few seconds.
     public func runWarmSpareEimTest(completionHandler: @escaping (Bool) -> Void) {
-        guard let controller = pathController else {
-            completionHandler(false)
-            return
-        }
-        controller.requestWarm()
-        workQueue.asyncAfter(deadline: .now() + 1) {
-            guard case .started(let handle, _) = self.state else {
+        workQueue.async {
+            guard let controller = self.pathController else {
                 completionHandler(false)
                 return
             }
-            completionHandler(wgWarmStartEimTest(handle) == 0)
+            controller.requestWarm()
+            self.workQueue.asyncAfter(deadline: .now() + 1) {
+                guard case .started(let handle, _) = self.state else {
+                    completionHandler(false)
+                    return
+                }
+                completionHandler(wgWarmStartEimTest(handle) == 0)
+            }
         }
     }
 
     #if FAILOVER_TESTING
     /// Debug: force the active path (or `nil` to resume automatic control).
     public func debugForceWarmSparePath(_ path: WarmSparePath?) {
-        pathController?.forcePath(path)
+        workQueue.async {
+            self.pathController?.forcePath(path)
+        }
     }
     #endif
 

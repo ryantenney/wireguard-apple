@@ -33,6 +33,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// Failover settings decoded from providerConfiguration (defaults if absent).
     private var failoverSettings = FailoverSettings()
 
+    /// The failover health monitor, if this tunnel is a failover group.
+    /// The provider owns the lifecycle; the adapter holds a copy (installed
+    /// via `setHealthMonitor`) for its network-path callbacks.
+    private var healthMonitor: ConnectionHealthMonitor?
+
     // MARK: - Widget Stats Writer
 
     /// Timer that periodically writes traffic stats to shared UserDefaults for the widget.
@@ -167,8 +172,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         finalizeSessionRecord(reason: reason)
 
-        adapter.healthMonitor?.stop()
-        adapter.healthMonitor = nil
+        healthMonitor?.stop()
+        healthMonitor = nil
+        adapter.setHealthMonitor(nil)
         stopStatsWriter()
 
         adapter.stop { error in
@@ -228,7 +234,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             var runtimeStats: [String: Any] = [:]
 
             // Gather health monitor state
-            if let monitor = adapter.healthMonitor {
+            if let monitor = healthMonitor {
                 group.enter()
                 monitor.getStateSnapshot { snapshot in
                     monitorSnapshot = snapshot
@@ -265,7 +271,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         #if FAILOVER_TESTING
         case 2:
             // Debug: force failover to next config
-            guard let monitor = adapter.healthMonitor else {
+            guard let monitor = healthMonitor else {
                 completionHandler(nil)
                 return
             }
@@ -276,7 +282,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         case 3:
             // Debug: force failback to primary
-            guard let monitor = adapter.healthMonitor else {
+            guard let monitor = healthMonitor else {
                 completionHandler(nil)
                 return
             }
@@ -446,7 +452,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
         }
 
-        if let monitor = adapter.healthMonitor {
+        if let monitor = healthMonitor {
             group.enter()
             monitor.getStateSnapshot { snapshot in
                 mergeQueue.async {
@@ -941,8 +947,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let oldSiblings = Self.failoverSiblingEndpoints(configs: failoverConfigs, activeIndex: activeConfigIndex)
         let siblingsChanged = Set(newSiblings) != Set(oldSiblings)
 
-        adapter.healthMonitor?.stop()
-        adapter.healthMonitor = nil
+        healthMonitor?.stop()
+        healthMonitor = nil
+        adapter.setHealthMonitor(nil)
 
         let finish: (Bool) -> Void = { success in
             guard success else {
@@ -1049,7 +1056,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             wg_log(logLevel.osLogLevel, message: message)
         }
         monitor.delegate = self
-        adapter.healthMonitor = monitor
+        healthMonitor = monitor
+        adapter.setHealthMonitor(monitor)
         monitor.start()
     }
 }
@@ -1131,7 +1139,9 @@ extension PacketTunnelProvider {
 
 extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didSwitchToConfigAt index: Int) {
-        guard monitor === adapter.healthMonitor else { return } // stale monitor from before a reload
+        // Compared against the provider's own reference, not the adapter's: the adapter's
+        // copy is installed asynchronously, so it can still be the pre-reload monitor here.
+        guard monitor === healthMonitor else { return } // stale monitor from before a reload
         let previousName = failoverConfigNames.indices.contains(activeConfigIndex) ? failoverConfigNames[activeConfigIndex] : "config #\(activeConfigIndex)"
         activeConfigIndex = index
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
@@ -1149,7 +1159,7 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     }
 
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectUnhealthyConnectionAt index: Int, txWithoutRxDuration: TimeInterval) {
-        guard monitor === adapter.healthMonitor else { return }
+        guard monitor === healthMonitor else { return }
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: '\(name)' unhealthy (tx without rx for \(Int(txWithoutRxDuration))s)")
         appendFailoverEvent(FailoverEvent(
@@ -1162,7 +1172,7 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     }
 
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didSuppressFailoverAt index: Int, txWithoutRxDuration: TimeInterval, reason: String) {
-        guard monitor === adapter.healthMonitor else { return }
+        guard monitor === healthMonitor else { return }
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: holding on '\(name)' (\(reason))")
         appendFailoverEvent(FailoverEvent(
@@ -1189,7 +1199,7 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     }
 
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didFailbackToConfigAt index: Int) {
-        guard monitor === adapter.healthMonitor else { return }
+        guard monitor === healthMonitor else { return }
         activeConfigIndex = index
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: successfully failed back to '\(name)'")
