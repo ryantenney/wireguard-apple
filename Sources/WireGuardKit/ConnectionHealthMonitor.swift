@@ -820,27 +820,51 @@ public class ConnectionHealthMonitor {
                         self.switchToConfig(at: nextNext)
                     }
                 } else {
-                    let previousIndex = self.activeIndex
-                    self.activeIndex = index
-                    self.lastSwitchTime = DispatchTime.now()
-                    self.consecutiveCycles += 1
-
-                    // Reset traffic tracking for the new config
-                    self.lastTxBytes = 0
-                    self.lastRxBytes = 0
-                    self.txWithoutRxSince = nil
-                    self.unhealthyReported = false
-                    self.clearIncident(recovered: false)
-
-                    let name = config.name ?? "config #\(index)"
-                    self.logHandler(.verbose, "Failover: switched from config #\(previousIndex) to '\(name)' (cycle \(self.consecutiveCycles))")
-                    self.delegate?.healthMonitor(self, didSwitchToConfigAt: index)
-
-                    // Start hot spare for the next potential failover target
-                    self.startHotSpareIfNeeded()
+                    self.commitSwitch(to: index, verb: "switched")
                 }
             }
         }
+    }
+
+    // MARK: - State Commit Helpers
+
+    /// Zero the traffic-delta tracking after any config change — the byte
+    /// counters restart from the new device. Must run on `workQueue`.
+    private func resetTrafficTracking() {
+        lastTxBytes = 0
+        lastRxBytes = 0
+        txWithoutRxSince = nil
+        unhealthyReported = false
+    }
+
+    /// Commit a forward switch to the config at `index` and start the next
+    /// hot spare. `verb` distinguishes the log line ("switched" vs
+    /// "hot spare promoted"). Must run on `workQueue`.
+    private func commitSwitch(to index: Int, verb: String) {
+        let previousIndex = activeIndex
+        activeIndex = index
+        lastSwitchTime = DispatchTime.now()
+        consecutiveCycles += 1
+        resetTrafficTracking()
+        clearIncident(recovered: false)
+        let name = configurations[index].name ?? "config #\(index)"
+        logHandler(.verbose, "Failover: \(verb) from config #\(previousIndex) to '\(name)' (cycle \(consecutiveCycles))")
+        delegate?.healthMonitor(self, didSwitchToConfigAt: index)
+        startHotSpareIfNeeded()
+    }
+
+    /// Commit a completed failback to the primary config (index 0) and start
+    /// the next hot spare. Must run on `workQueue`.
+    private func commitFailback() {
+        // Reads lastSwitchTime before it is overwritten below.
+        noteFailbackTiming()
+        activeIndex = 0
+        lastSwitchTime = DispatchTime.now()
+        consecutiveCycles = 0
+        resetTrafficTracking()
+        isProbing = false
+        delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
+        startHotSpareIfNeeded()
     }
 
     // MARK: - Failback Probing
@@ -954,32 +978,11 @@ public class ConnectionHealthMonitor {
                                             self.isProbing = false
                                             return
                                         }
-                                        // Reads lastSwitchTime before it is overwritten below.
-                                        self.noteFailbackTiming()
-                                        self.activeIndex = 0
-                                        self.lastSwitchTime = DispatchTime.now()
-                                        self.consecutiveCycles = 0
-                                        self.lastTxBytes = 0
-                                        self.lastRxBytes = 0
-                                        self.txWithoutRxSince = nil
-                                        self.unhealthyReported = false
-                                        self.isProbing = false
-                                        self.delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
-                                        self.startHotSpareIfNeeded()
+                                        self.commitFailback()
                                     }
                                 }
                             } else {
-                                self.noteFailbackTiming()
-                                self.activeIndex = 0
-                                self.lastSwitchTime = DispatchTime.now()
-                                self.consecutiveCycles = 0
-                                self.lastTxBytes = 0
-                                self.lastRxBytes = 0
-                                self.txWithoutRxSince = nil
-                                self.unhealthyReported = false
-                                self.isProbing = false
-                                self.delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
-                                self.startHotSpareIfNeeded()
+                                self.commitFailback()
                             }
                         }
                     }
@@ -1051,17 +1054,7 @@ public class ConnectionHealthMonitor {
                     // Primary recovered!
                     let name = self.configurations[0].name ?? "config #0"
                     self.logHandler(.verbose, "Failover: primary '\(name)' recovered (handshake \(Int(handshakeAge))s ago). Staying on primary.")
-                    self.noteFailbackTiming()
-                    self.activeIndex = 0
-                    self.lastSwitchTime = DispatchTime.now()
-                    self.consecutiveCycles = 0
-                    self.lastTxBytes = 0
-                    self.lastRxBytes = 0
-                    self.txWithoutRxSince = nil
-                    self.unhealthyReported = false
-                    self.isProbing = false
-                    self.delegate?.healthMonitor(self, didFailbackToConfigAt: 0)
-                    self.startHotSpareIfNeeded()
+                    self.commitFailback()
                 } else {
                     // Primary still unhealthy — revert
                     let fallbackName = self.configurations[savedFallbackIndex].name ?? "config #\(savedFallbackIndex)"
@@ -1076,10 +1069,7 @@ public class ConnectionHealthMonitor {
                                 self.logHandler(.error, "Failover: revert to '\(fallbackName)' failed: \(updateError.localizedDescription), still on primary")
                                 self.activeIndex = 0
                             }
-                            self.lastTxBytes = 0
-                            self.lastRxBytes = 0
-                            self.txWithoutRxSince = nil
-                            self.unhealthyReported = false
+                            self.resetTrafficTracking()
                             self.isProbing = false
                         }
                     }
@@ -1211,23 +1201,7 @@ public class ConnectionHealthMonitor {
                     // Fall back to regular config swap
                     self.switchToConfig(at: targetIndex)
                 } else {
-                    let previousIndex = self.activeIndex
-                    self.activeIndex = targetIndex
-                    self.lastSwitchTime = DispatchTime.now()
-                    self.consecutiveCycles += 1
-
-                    self.lastTxBytes = 0
-                    self.lastRxBytes = 0
-                    self.txWithoutRxSince = nil
-                    self.unhealthyReported = false
-                    self.clearIncident(recovered: false)
-
-                    let name = config.name ?? "config #\(targetIndex)"
-                    self.logHandler(.verbose, "Failover: \(label) promoted from #\(previousIndex) to '\(name)' (cycle \(self.consecutiveCycles))")
-                    self.delegate?.healthMonitor(self, didSwitchToConfigAt: targetIndex)
-
-                    // Start a new hot spare for the next target
-                    self.startHotSpareIfNeeded()
+                    self.commitSwitch(to: targetIndex, verb: "\(label) promoted")
                 }
             }
         }
