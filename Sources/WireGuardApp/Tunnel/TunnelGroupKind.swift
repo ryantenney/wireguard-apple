@@ -53,17 +53,3 @@ protocol TunnelsManagerGroupListDelegate: AnyObject {
     func groupMoved(kind: TunnelGroupKind, from oldIndex: Int, to newIndex: Int)
     func groupRemoved(kind: TunnelGroupKind, at index: Int, tunnel: TunnelContainer)
 }
-
-// MARK: - Unified Edit Delegates
-
-/// iOS edit delegate for group controllers.
-protocol TunnelGroupEditDelegate: AnyObject {
-    func groupSaved(_ tunnel: TunnelContainer)
-    func groupDeleted(_ tunnel: TunnelContainer)
-}
-
-/// macOS edit delegate for group controllers.
-protocol TunnelGroupEditViewControllerDelegate: AnyObject {
-    func groupSaved(tunnel: TunnelContainer)
-    func groupEditingCancelled()
-}

@@ -75,26 +75,3 @@ struct FailoverGroup: Codable, Equatable, Identifiable {
         onDemandActivation = try container.decodeIfPresent(OnDemandActivation.self, forKey: .onDemandActivation) ?? OnDemandActivation()
     }
 }
-
-// MARK: - Cleanup
-
-extension FailoverGroup {
-    /// Clean up groups that reference tunnels that no longer exist.
-    static func cleanupGroups(existingTunnelNames: Set<String>) {
-        var groups = failoverGroupPersistence.loadGroups()
-        var modified = false
-        for i in groups.indices {
-            let filtered = groups[i].tunnelNames.filter { existingTunnelNames.contains($0) }
-            if filtered != groups[i].tunnelNames {
-                groups[i].tunnelNames = filtered
-                modified = true
-            }
-        }
-        // Remove groups with fewer than 2 tunnels (failover needs at least 2)
-        let before = groups.count
-        groups.removeAll { $0.tunnelNames.count < 2 }
-        if modified || groups.count != before {
-            failoverGroupPersistence.saveGroups(groups)
-        }
-    }
-}

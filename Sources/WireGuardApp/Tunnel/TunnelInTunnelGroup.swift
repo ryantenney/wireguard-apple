@@ -41,19 +41,6 @@ struct TunnelInTunnelGroup: Codable, Equatable, Identifiable {
     }
 }
 
-// MARK: - Cleanup
-
-extension TunnelInTunnelGroup {
-    /// Remove groups that reference tunnels that no longer exist.
-    static func cleanupGroups(existingTunnelNames: Set<String>) {
-        let groups = titGroupPersistence.loadGroups().filter {
-            existingTunnelNames.contains($0.outerTunnelName) &&
-            existingTunnelNames.contains($0.innerTunnelName)
-        }
-        titGroupPersistence.saveGroups(groups)
-    }
-}
-
 // MARK: - NETunnelProviderManager helpers
 
 extension TunnelInTunnelGroup {

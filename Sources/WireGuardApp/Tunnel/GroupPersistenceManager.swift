@@ -66,5 +66,4 @@ class GroupPersistenceManager<T: Codable> where T: Identifiable, T.ID == UUID {
 
 // MARK: - Shared Instances
 
-let failoverGroupPersistence = GroupPersistenceManager<FailoverGroup>(fileName: "failover-groups.json", logPrefix: "Failover")
 let titGroupPersistence = GroupPersistenceManager<TunnelInTunnelGroup>(fileName: "tit-groups.json", logPrefix: "TiT")
