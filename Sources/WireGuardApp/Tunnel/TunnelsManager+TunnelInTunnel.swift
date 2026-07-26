@@ -42,8 +42,8 @@ extension TunnelsManager {
             }
 
             let matchName = oldName ?? tunnelName
-            var outerName = providerConfig[TunnelInTunnelConfigKeys.outerName] as? String ?? ""
-            var innerName = providerConfig[TunnelInTunnelConfigKeys.innerName] as? String ?? ""
+            var outerName = providerConfig[ProviderConfigurationKeys.titOuterName] as? String ?? ""
+            var innerName = providerConfig[ProviderConfigurationKeys.titInnerName] as? String ?? ""
 
             guard outerName == matchName || innerName == matchName else { continue }
 

@@ -66,11 +66,11 @@ extension TunnelContainer {
     }
 
     var mapHomeTiTOuterName: String? {
-        return mapHomeProviderConfiguration?[TunnelInTunnelConfigKeys.outerName] as? String
+        return mapHomeProviderConfiguration?[ProviderConfigurationKeys.titOuterName] as? String
     }
 
     var mapHomeTiTInnerName: String? {
-        return mapHomeProviderConfiguration?[TunnelInTunnelConfigKeys.innerName] as? String
+        return mapHomeProviderConfiguration?[ProviderConfigurationKeys.titInnerName] as? String
     }
 }
 

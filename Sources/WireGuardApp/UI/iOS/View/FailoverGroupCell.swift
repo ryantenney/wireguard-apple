@@ -152,8 +152,8 @@ class FailoverGroupCell: UITableViewCell {
         }
         if let configNames = providerConfig["FailoverConfigNames"] as? [String] {
             detailLabel.text = configNames.joined(separator: " \u{2192} ")
-        } else if let outerName = providerConfig[TunnelInTunnelConfigKeys.outerName] as? String,
-                  let innerName = providerConfig[TunnelInTunnelConfigKeys.innerName] as? String {
+        } else if let outerName = providerConfig[ProviderConfigurationKeys.titOuterName] as? String,
+                  let innerName = providerConfig[ProviderConfigurationKeys.titInnerName] as? String {
             detailLabel.text = "\(outerName) \u{2192} \(innerName)"
         } else {
             detailLabel.text = ""

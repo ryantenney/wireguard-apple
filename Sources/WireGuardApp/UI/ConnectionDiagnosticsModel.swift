@@ -882,8 +882,8 @@ final class ConnectionDiagnosticsModel {
             sections.append(DiagnosticsSection(title: "Failover Configuration", rows: rows))
         case .some(.tunnelInTunnel):
             let rows = [
-                DiagnosticsRow(key: "Outer (Server A)", value: providerConfig[TunnelInTunnelConfigKeys.outerName] as? String ?? "—"),
-                DiagnosticsRow(key: "Inner (Server B)", value: providerConfig[TunnelInTunnelConfigKeys.innerName] as? String ?? "—")
+                DiagnosticsRow(key: "Outer (Server A)", value: providerConfig[ProviderConfigurationKeys.titOuterName] as? String ?? "—"),
+                DiagnosticsRow(key: "Inner (Server B)", value: providerConfig[ProviderConfigurationKeys.titInnerName] as? String ?? "—")
             ]
             sections.append(DiagnosticsSection(title: "Tunnel Chain", rows: rows))
         case .none:

@@ -25,7 +25,7 @@ enum TunnelGroupKind: String, CaseIterable {
     var groupIdKey: String {
         switch self {
         case .failover: return "FailoverGroupId"
-        case .tunnelInTunnel: return TunnelInTunnelConfigKeys.groupId
+        case .tunnelInTunnel: return ProviderConfigurationKeys.titGroupId
         }
     }
 

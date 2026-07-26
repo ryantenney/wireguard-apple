@@ -193,20 +193,20 @@ struct TiTGroupSpec: TunnelGroupSpec {
         }
 
         guard let outerRef = resolveMember(tunnelName: outerTunnelName,
-                                           existingNameKey: TunnelInTunnelConfigKeys.outerName,
-                                           refKey: TunnelInTunnelConfigKeys.outerConfigRef,
-                                           legacyConfigKey: TunnelInTunnelConfigKeys.outerConfig),
+                                           existingNameKey: ProviderConfigurationKeys.titOuterName,
+                                           refKey: ProviderConfigurationKeys.titOuterConfigRef,
+                                           legacyConfigKey: ProviderConfigurationKeys.titOuterConfig),
               let innerRef = resolveMember(tunnelName: innerTunnelName,
-                                           existingNameKey: TunnelInTunnelConfigKeys.innerName,
-                                           refKey: TunnelInTunnelConfigKeys.innerConfigRef,
-                                           legacyConfigKey: TunnelInTunnelConfigKeys.innerConfig) else {
+                                           existingNameKey: ProviderConfigurationKeys.titInnerName,
+                                           refKey: ProviderConfigurationKeys.titInnerConfigRef,
+                                           legacyConfigKey: ProviderConfigurationKeys.titInnerConfig) else {
             for ref in created {
                 Keychain.deleteReference(called: ref)
             }
             return nil
         }
 
-        let groupId = (existing?[TunnelInTunnelConfigKeys.groupId] as? String) ?? UUID().uuidString
+        let groupId = (existing?[ProviderConfigurationKeys.titGroupId] as? String) ?? UUID().uuidString
         var providerConfig = existing ?? [:]
         let newConfig = TunnelInTunnelGroup.makeProviderConfiguration(
             groupId: groupId,
@@ -217,11 +217,11 @@ struct TiTGroupSpec: TunnelGroupSpec {
             providerConfig[key] = value
         }
         // Legacy plaintext storage
-        providerConfig.removeValue(forKey: TunnelInTunnelConfigKeys.outerConfig)
-        providerConfig.removeValue(forKey: TunnelInTunnelConfigKeys.innerConfig)
+        providerConfig.removeValue(forKey: ProviderConfigurationKeys.titOuterConfig)
+        providerConfig.removeValue(forKey: ProviderConfigurationKeys.titInnerConfig)
 
         var obsolete: [Data] = []
-        for refKey in [TunnelInTunnelConfigKeys.outerConfigRef, TunnelInTunnelConfigKeys.innerConfigRef] {
+        for refKey in [ProviderConfigurationKeys.titOuterConfigRef, ProviderConfigurationKeys.titInnerConfigRef] {
             if let oldRef = existing?[refKey] as? Data, !kept.contains(oldRef) {
                 obsolete.append(oldRef)
             }
@@ -389,8 +389,8 @@ extension TunnelsManager {
                 || (existingConfig?["FailoverSettings"] as? Data) != (buildResult.providerConfiguration["FailoverSettings"] as? Data)
         case .tunnelInTunnel:
             isRunningConfigChanged =
-                (existingConfig?[TunnelInTunnelConfigKeys.outerName] as? String) != (buildResult.providerConfiguration[TunnelInTunnelConfigKeys.outerName] as? String)
-                || (existingConfig?[TunnelInTunnelConfigKeys.innerName] as? String) != (buildResult.providerConfiguration[TunnelInTunnelConfigKeys.innerName] as? String)
+                (existingConfig?[ProviderConfigurationKeys.titOuterName] as? String) != (buildResult.providerConfiguration[ProviderConfigurationKeys.titOuterName] as? String)
+                || (existingConfig?[ProviderConfigurationKeys.titInnerName] as? String) != (buildResult.providerConfiguration[ProviderConfigurationKeys.titInnerName] as? String)
         }
 
         // Refresh the group's own keychain copy of the source config
@@ -568,13 +568,13 @@ extension TunnelsManager {
         case .tunnelInTunnel:
             let outerConfig: String?
             let innerConfig: String?
-            if let outerRef = providerConfig[TunnelInTunnelConfigKeys.outerConfigRef] as? Data,
-               let innerRef = providerConfig[TunnelInTunnelConfigKeys.innerConfigRef] as? Data {
+            if let outerRef = providerConfig[ProviderConfigurationKeys.titOuterConfigRef] as? Data,
+               let innerRef = providerConfig[ProviderConfigurationKeys.titInnerConfigRef] as? Data {
                 outerConfig = Keychain.openReference(called: outerRef)
                 innerConfig = Keychain.openReference(called: innerRef)
             } else {
-                outerConfig = providerConfig[TunnelInTunnelConfigKeys.outerConfig] as? String
-                innerConfig = providerConfig[TunnelInTunnelConfigKeys.innerConfig] as? String
+                outerConfig = providerConfig[ProviderConfigurationKeys.titOuterConfig] as? String
+                innerConfig = providerConfig[ProviderConfigurationKeys.titInnerConfig] as? String
             }
             guard let outerConfig = outerConfig, let innerConfig = innerConfig else {
                 wg_log(.error, message: "\(kind.displayName): could not read member configs for live reload")
@@ -582,9 +582,9 @@ extension TunnelsManager {
                 return
             }
             payload["outer"] = outerConfig
-            payload["outerName"] = providerConfig[TunnelInTunnelConfigKeys.outerName] as? String ?? ""
+            payload["outerName"] = providerConfig[ProviderConfigurationKeys.titOuterName] as? String ?? ""
             payload["inner"] = innerConfig
-            payload["innerName"] = providerConfig[TunnelInTunnelConfigKeys.innerName] as? String ?? ""
+            payload["innerName"] = providerConfig[ProviderConfigurationKeys.titInnerName] as? String ?? ""
         }
 
         guard let json = try? JSONSerialization.data(withJSONObject: payload) else {
@@ -651,10 +651,10 @@ extension TunnelsManager {
         if let failoverRefs = providerConfiguration?["FailoverConfigRefs"] as? [Data] {
             refs.append(contentsOf: failoverRefs)
         }
-        if let outerRef = providerConfiguration?[TunnelInTunnelConfigKeys.outerConfigRef] as? Data {
+        if let outerRef = providerConfiguration?[ProviderConfigurationKeys.titOuterConfigRef] as? Data {
             refs.append(outerRef)
         }
-        if let innerRef = providerConfiguration?[TunnelInTunnelConfigKeys.innerConfigRef] as? Data {
+        if let innerRef = providerConfiguration?[ProviderConfigurationKeys.titInnerConfigRef] as? Data {
             refs.append(innerRef)
         }
         return refs
@@ -697,18 +697,18 @@ extension NETunnelProviderProtocol {
             changed = true
         }
 
-        let hasLegacyTiT = config[TunnelInTunnelConfigKeys.outerConfig] != nil
-            || config[TunnelInTunnelConfigKeys.innerConfig] != nil
+        let hasLegacyTiT = config[ProviderConfigurationKeys.titOuterConfig] != nil
+            || config[ProviderConfigurationKeys.titInnerConfig] != nil
         if hasLegacyTiT {
-            let hasRefs = config[TunnelInTunnelConfigKeys.outerConfigRef] != nil
-                && config[TunnelInTunnelConfigKeys.innerConfigRef] != nil
+            let hasRefs = config[ProviderConfigurationKeys.titOuterConfigRef] != nil
+                && config[ProviderConfigurationKeys.titInnerConfigRef] != nil
             if !hasRefs {
-                guard let legacyOuter = config[TunnelInTunnelConfigKeys.outerConfig] as? String,
-                      let legacyInner = config[TunnelInTunnelConfigKeys.innerConfig] as? String else {
+                guard let legacyOuter = config[ProviderConfigurationKeys.titOuterConfig] as? String,
+                      let legacyInner = config[ProviderConfigurationKeys.titInnerConfig] as? String else {
                     return changed
                 }
-                let outerName = config[TunnelInTunnelConfigKeys.outerName] as? String ?? "outer"
-                let innerName = config[TunnelInTunnelConfigKeys.innerName] as? String ?? "inner"
+                let outerName = config[ProviderConfigurationKeys.titOuterName] as? String ?? "outer"
+                let innerName = config[ProviderConfigurationKeys.titInnerName] as? String ?? "inner"
                 guard let outerRef = Keychain.makeReference(containing: legacyOuter, called: "\(name): \(outerName)") else {
                     wg_log(.error, message: "TiT: keychain migration failed for group '\(name)', will retry")
                     return changed
@@ -718,12 +718,12 @@ extension NETunnelProviderProtocol {
                     Keychain.deleteReference(called: outerRef)
                     return changed
                 }
-                config[TunnelInTunnelConfigKeys.outerConfigRef] = outerRef
-                config[TunnelInTunnelConfigKeys.innerConfigRef] = innerRef
+                config[ProviderConfigurationKeys.titOuterConfigRef] = outerRef
+                config[ProviderConfigurationKeys.titInnerConfigRef] = innerRef
                 wg_log(.info, message: "TiT: migrated member configs of group '\(name)' to keychain")
             }
-            config.removeValue(forKey: TunnelInTunnelConfigKeys.outerConfig)
-            config.removeValue(forKey: TunnelInTunnelConfigKeys.innerConfig)
+            config.removeValue(forKey: ProviderConfigurationKeys.titOuterConfig)
+            config.removeValue(forKey: ProviderConfigurationKeys.titInnerConfig)
             changed = true
         }
 

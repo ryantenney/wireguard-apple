@@ -41,8 +41,8 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
            let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol {
             let providerConfig = proto.providerConfiguration ?? [:]
             self.groupName = groupTunnel.name
-            self.outerTunnelName = (providerConfig[TunnelInTunnelConfigKeys.outerName] as? String) ?? ""
-            self.innerTunnelName = (providerConfig[TunnelInTunnelConfigKeys.innerName] as? String) ?? ""
+            self.outerTunnelName = (providerConfig[ProviderConfigurationKeys.titOuterName] as? String) ?? ""
+            self.innerTunnelName = (providerConfig[ProviderConfigurationKeys.titInnerName] as? String) ?? ""
             self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: groupTunnel)
         } else {
             self.groupName = ""

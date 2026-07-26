@@ -121,20 +121,20 @@ final class TunnelNode: ObservableObject, Identifiable {
 
     /// Outer/carrier tunnel name for a TiT group.
     var titOuterName: String {
-        (providerConfiguration?[TunnelInTunnelConfigKeys.outerName] as? String) ?? ""
+        (providerConfiguration?[ProviderConfigurationKeys.titOuterName] as? String) ?? ""
     }
 
     /// Inner/exit tunnel name for a TiT group.
     var titInnerName: String {
-        (providerConfiguration?[TunnelInTunnelConfigKeys.innerName] as? String) ?? ""
+        (providerConfiguration?[ProviderConfigurationKeys.titInnerName] as? String) ?? ""
     }
 
     var titOuterEndpoint: String? {
-        titEndpoint(forKey: TunnelInTunnelConfigKeys.outerConfig)
+        titEndpoint(forKey: ProviderConfigurationKeys.titOuterConfig)
     }
 
     var titInnerEndpoint: String? {
-        titEndpoint(forKey: TunnelInTunnelConfigKeys.innerConfig)
+        titEndpoint(forKey: ProviderConfigurationKeys.titInnerConfig)
     }
 
     private func titEndpoint(forKey key: String) -> String? {

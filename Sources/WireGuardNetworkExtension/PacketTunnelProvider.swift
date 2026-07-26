@@ -807,23 +807,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // keychain migration (the app migrates them on its next launch).
         let outerConfigString: String?
         let innerConfigString: String?
-        if let outerRef = providerConfig?["TiTOuterConfigRef"] as? Data,
-           let innerRef = providerConfig?["TiTInnerConfigRef"] as? Data {
+        if let outerRef = providerConfig?[ProviderConfigurationKeys.titOuterConfigRef] as? Data,
+           let innerRef = providerConfig?[ProviderConfigurationKeys.titInnerConfigRef] as? Data {
             outerConfigString = Keychain.openReference(called: outerRef)
             innerConfigString = Keychain.openReference(called: innerRef)
             if outerConfigString == nil || innerConfigString == nil {
                 wg_log(.error, staticMessage: "TiT: could not open member configs from keychain")
             }
         } else {
-            outerConfigString = providerConfig?["TiTOuterConfig"] as? String
-            innerConfigString = providerConfig?["TiTInnerConfig"] as? String
+            outerConfigString = providerConfig?[ProviderConfigurationKeys.titOuterConfig] as? String
+            innerConfigString = providerConfig?[ProviderConfigurationKeys.titInnerConfig] as? String
         }
 
         guard let outerConfigString = outerConfigString,
               let innerConfigString = innerConfigString else { return }
 
-        let outerName = providerConfig?["TiTOuterName"] as? String
-        let innerName = providerConfig?["TiTInnerName"] as? String
+        let outerName = providerConfig?[ProviderConfigurationKeys.titOuterName] as? String
+        let innerName = providerConfig?[ProviderConfigurationKeys.titInnerName] as? String
 
         do {
             titOuterConfig = try TunnelConfiguration(fromWgQuickConfig: outerConfigString, called: outerName)

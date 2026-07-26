@@ -41,21 +41,6 @@ struct TunnelInTunnelGroup: Codable, Equatable, Identifiable {
     }
 }
 
-/// providerConfiguration keys used when storing a TiT session in an NETunnelProviderManager.
-/// The member configs themselves live in the keychain; providerConfiguration holds
-/// only persistent references (the legacy plaintext keys remain solely so old
-/// entries can be migrated and read until the app has run once post-upgrade).
-enum TunnelInTunnelConfigKeys {
-    static let groupId        = "TiTGroupId"
-    static let outerConfigRef = "TiTOuterConfigRef"
-    static let innerConfigRef = "TiTInnerConfigRef"
-    static let outerName      = "TiTOuterName"
-    static let innerName      = "TiTInnerName"
-    /// Legacy plaintext storage (pre-keychain migration). Do not write.
-    static let outerConfig    = "TiTOuterConfig"
-    static let innerConfig    = "TiTInnerConfig"
-}
-
 // MARK: - Cleanup
 
 extension TunnelInTunnelGroup {
@@ -81,11 +66,11 @@ extension TunnelInTunnelGroup {
         innerConfigRef: Data, innerName: String
     ) -> [String: Any] {
         return [
-            TunnelInTunnelConfigKeys.groupId:        groupId,
-            TunnelInTunnelConfigKeys.outerConfigRef: outerConfigRef,
-            TunnelInTunnelConfigKeys.innerConfigRef: innerConfigRef,
-            TunnelInTunnelConfigKeys.outerName:      outerName,
-            TunnelInTunnelConfigKeys.innerName:      innerName
+            ProviderConfigurationKeys.titGroupId:        groupId,
+            ProviderConfigurationKeys.titOuterConfigRef: outerConfigRef,
+            ProviderConfigurationKeys.titInnerConfigRef: innerConfigRef,
+            ProviderConfigurationKeys.titOuterName:      outerName,
+            ProviderConfigurationKeys.titInnerName:      innerName
         ]
     }
 }

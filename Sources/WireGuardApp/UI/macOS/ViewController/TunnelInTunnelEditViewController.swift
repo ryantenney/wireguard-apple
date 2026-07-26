@@ -96,8 +96,8 @@ class TunnelInTunnelEditViewController: NSViewController {
         if let tunnel = tunnel,
            let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol {
             let providerConfig = proto.providerConfiguration ?? [:]
-            self.outerTunnelName = (providerConfig[TunnelInTunnelConfigKeys.outerName] as? String) ?? ""
-            self.innerTunnelName = (providerConfig[TunnelInTunnelConfigKeys.innerName] as? String) ?? ""
+            self.outerTunnelName = (providerConfig[ProviderConfigurationKeys.titOuterName] as? String) ?? ""
+            self.innerTunnelName = (providerConfig[ProviderConfigurationKeys.titInnerName] as? String) ?? ""
             self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: tunnel)
         } else {
             self.outerTunnelName = ""

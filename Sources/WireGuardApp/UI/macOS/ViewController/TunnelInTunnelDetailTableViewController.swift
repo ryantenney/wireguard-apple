@@ -41,8 +41,8 @@ class TunnelInTunnelDetailTableViewController: GroupDetailBaseViewController {
     override func loadGroupData() {
         guard let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol else { return }
         let providerConfig = proto.providerConfiguration ?? [:]
-        outerTunnelName = (providerConfig[TunnelInTunnelConfigKeys.outerName] as? String) ?? ""
-        innerTunnelName = (providerConfig[TunnelInTunnelConfigKeys.innerName] as? String) ?? ""
+        outerTunnelName = (providerConfig[ProviderConfigurationKeys.titOuterName] as? String) ?? ""
+        innerTunnelName = (providerConfig[ProviderConfigurationKeys.titInnerName] as? String) ?? ""
     }
 
     override func rebuildTableViewModelRows() {

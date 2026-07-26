@@ -90,8 +90,8 @@ class FailoverGroupListRow: NSView {
         }
         if let configNames = providerConfig["FailoverConfigNames"] as? [String] {
             subtitleLabel.stringValue = configNames.joined(separator: " \u{2192} ")
-        } else if let outerName = providerConfig[TunnelInTunnelConfigKeys.outerName] as? String,
-                  let innerName = providerConfig[TunnelInTunnelConfigKeys.innerName] as? String {
+        } else if let outerName = providerConfig[ProviderConfigurationKeys.titOuterName] as? String,
+                  let innerName = providerConfig[ProviderConfigurationKeys.titInnerName] as? String {
             subtitleLabel.stringValue = "\(outerName) \u{2192} \(innerName)"
         } else {
             subtitleLabel.stringValue = ""
