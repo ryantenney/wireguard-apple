@@ -18,7 +18,6 @@ import "C"
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
 	"net"
 	"net/netip"
 	"os"
@@ -72,15 +71,6 @@ type tunnelHandle struct {
 	*device.Device
 	*device.Logger
 }
-
-// handlesMu guards the handle maps not yet migrated to handleRegistry
-// (probeHandles, titHandles). Entry points are normally serialized by the
-// Swift adapter's work queue, but WireGuardAdapter.deinit runs on the
-// deallocating thread, and unsynchronized Go map writes are a hard runtime
-// crash if that serialization is ever broken (e.g. a second adapter
-// instance) — so the maps lock defensively. Never held across blocking
-// device calls.
-var handlesMu sync.Mutex
 
 var tunnelHandles = newHandleRegistry[tunnelHandle]()
 
@@ -438,7 +428,7 @@ type probeHandle struct {
 	tunDev *swappableTunDevice
 }
 
-var probeHandles = make(map[int32]probeHandle)
+var probeHandles = newHandleRegistry[probeHandle]()
 
 //export wgProbeOn
 func wgProbeOn(settings *C.char, keepaliveOverride int32) int32 {
@@ -467,41 +457,26 @@ func wgProbeOn(settings *C.char, keepaliveOverride int32) int32 {
 	dev.Up()
 	logger.Verbosef("Probe: device started")
 
-	handlesMu.Lock()
-	var i int32
-	for i = 0; i < math.MaxInt32; i++ {
-		if _, exists := probeHandles[i]; !exists {
-			break
-		}
-	}
-	if i == math.MaxInt32 {
-		handlesMu.Unlock()
+	i, ok := probeHandles.alloc(probeHandle{dev, logger, swappable})
+	if !ok {
 		dev.Close()
 		return -1
 	}
-	probeHandles[i] = probeHandle{dev, logger, swappable}
-	handlesMu.Unlock()
 	return i
 }
 
 //export wgProbeOff
 func wgProbeOff(handle int32) {
-	handlesMu.Lock()
-	h, ok := probeHandles[handle]
+	h, ok := probeHandles.remove(handle)
 	if !ok {
-		handlesMu.Unlock()
 		return
 	}
-	delete(probeHandles, handle)
-	handlesMu.Unlock()
 	h.Close()
 }
 
 //export wgProbeGetConfig
 func wgProbeGetConfig(handle int32) *C.char {
-	handlesMu.Lock()
-	h, ok := probeHandles[handle]
-	handlesMu.Unlock()
+	h, ok := probeHandles.get(handle)
 	if !ok {
 		return nil
 	}
@@ -514,9 +489,7 @@ func wgProbeGetConfig(handle int32) *C.char {
 
 //export wgProbeSetConfig
 func wgProbeSetConfig(handle int32, settings *C.char) int64 {
-	handlesMu.Lock()
-	h, ok := probeHandles[handle]
-	handlesMu.Unlock()
+	h, ok := probeHandles.get(handle)
 	if !ok {
 		return -1
 	}
@@ -533,9 +506,7 @@ func wgProbeSetConfig(handle int32, settings *C.char) int64 {
 
 //export wgProbeBumpSockets
 func wgProbeBumpSockets(handle int32) {
-	handlesMu.Lock()
-	h, ok := probeHandles[handle]
-	handlesMu.Unlock()
+	h, ok := probeHandles.get(handle)
 	if !ok {
 		return
 	}
@@ -555,9 +526,7 @@ func wgProbeBumpSockets(handle int32) {
 
 //export wgProbePromote
 func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
-	handlesMu.Lock()
-	h, ok := probeHandles[probeHandleID]
-	handlesMu.Unlock()
+	h, ok := probeHandles.get(probeHandleID)
 	if !ok {
 		return -1
 	}
@@ -587,9 +556,7 @@ func wgProbePromote(probeHandleID int32, tunFd int32) int32 {
 	h.Verbosef("Probe promote: swapped null tun for real utun — session preserved")
 
 	// Remove from probeHandles and add to tunnelHandles.
-	handlesMu.Lock()
-	delete(probeHandles, probeHandleID)
-	handlesMu.Unlock()
+	probeHandles.remove(probeHandleID)
 
 	i, ok := tunnelHandles.alloc(tunnelHandle{h.Device, h.Logger})
 	if !ok {
@@ -1100,7 +1067,7 @@ type titHandle struct {
 	tunnel      *pipedTunnel
 }
 
-var titHandles = make(map[int32]titHandle)
+var titHandles = newHandleRegistry[titHandle]()
 
 //export wgTurnOnTiT
 func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *C.char, tunFd int32) int32 {
@@ -1174,43 +1141,28 @@ func wgTurnOnTiT(outerSettings *C.char, innerSettings *C.char, outerIfaceIPStr *
 	innerDev.Up()
 	innerLogger.Verbosef("TiT: devices started")
 
-	handlesMu.Lock()
-	var i int32
-	for i = 0; i < math.MaxInt32; i++ {
-		if _, exists := titHandles[i]; !exists {
-			break
-		}
-	}
-	if i == math.MaxInt32 {
-		handlesMu.Unlock()
+	i, ok := titHandles.alloc(titHandle{innerDev, innerLogger, outerDev, outerLogger, tunnel})
+	if !ok {
 		innerDev.Close()
 		outerDev.Close()
 		return -1
 	}
-	titHandles[i] = titHandle{innerDev, innerLogger, outerDev, outerLogger, tunnel}
-	handlesMu.Unlock()
 	return i
 }
 
 //export wgTurnOffTiT
 func wgTurnOffTiT(handle int32) {
-	handlesMu.Lock()
-	h, ok := titHandles[handle]
+	h, ok := titHandles.remove(handle)
 	if !ok {
-		handlesMu.Unlock()
 		return
 	}
-	delete(titHandles, handle)
-	handlesMu.Unlock()
 	h.innerDev.Close()
 	h.outerDev.Close()
 }
 
 //export wgGetConfigTiT
 func wgGetConfigTiT(handle int32) *C.char {
-	handlesMu.Lock()
-	h, ok := titHandles[handle]
-	handlesMu.Unlock()
+	h, ok := titHandles.get(handle)
 	if !ok {
 		return nil
 	}
@@ -1223,9 +1175,7 @@ func wgGetConfigTiT(handle int32) *C.char {
 
 //export wgGetOuterConfigTiT
 func wgGetOuterConfigTiT(handle int32) *C.char {
-	handlesMu.Lock()
-	h, ok := titHandles[handle]
-	handlesMu.Unlock()
+	h, ok := titHandles.get(handle)
 	if !ok {
 		return nil
 	}
@@ -1238,9 +1188,7 @@ func wgGetOuterConfigTiT(handle int32) *C.char {
 
 //export wgSetInnerConfigTiT
 func wgSetInnerConfigTiT(handle int32, settings *C.char) int64 {
-	handlesMu.Lock()
-	h, ok := titHandles[handle]
-	handlesMu.Unlock()
+	h, ok := titHandles.get(handle)
 	if !ok {
 		return -1
 	}
@@ -1256,9 +1204,7 @@ func wgSetInnerConfigTiT(handle int32, settings *C.char) int64 {
 
 //export wgBumpSocketsTiT
 func wgBumpSocketsTiT(handle int32) {
-	handlesMu.Lock()
-	h, ok := titHandles[handle]
-	handlesMu.Unlock()
+	h, ok := titHandles.get(handle)
 	if !ok {
 		return
 	}
@@ -1277,9 +1223,7 @@ func wgBumpSocketsTiT(handle int32) {
 
 //export wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT
 func wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle int32) {
-	handlesMu.Lock()
-	h, ok := titHandles[handle]
-	handlesMu.Unlock()
+	h, ok := titHandles.get(handle)
 	if !ok {
 		return
 	}
