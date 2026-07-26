@@ -1,3 +1,5 @@
+//go:build darwin
+
 /* SPDX-License-Identifier: MIT
  *
  * Copyright (C) 2026 Ryan Tenney. All Rights Reserved.
@@ -31,14 +33,11 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/netip"
 	"os"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -54,134 +53,6 @@ const (
 	warmPathPrimary  int32 = 0
 	warmPathCellular int32 = 1
 )
-
-// ---- Echo protocol (shared with server/echo-responder) ----
-//
-// Request (client → server), exactly echoRequestSize bytes:
-//   0..3   magic "WGE1"
-//   4      type 0x01 (request)
-//   5..12  opaque token (8 bytes)
-//   13..   zero padding (keeps request >= any reply: amplification factor <= 1)
-//
-// Reply (server → client), <= 32 bytes:
-//   0..3   magic "WGE1"
-//   4      type 0x02 (reply)
-//   5..12  token echoed
-//   13     observed address family (4 or 6)
-//   14..15 observed source port (big endian)
-//   16..   observed source IP (4 or 16 bytes)
-
-const (
-	echoMagic       = "WGE1"
-	echoTypeRequest = 0x01
-	echoTypeReply   = 0x02
-	echoRequestSize = 40
-)
-
-func buildEchoRequest(token uint64) []byte {
-	pkt := make([]byte, echoRequestSize)
-	copy(pkt[0:4], echoMagic)
-	pkt[4] = echoTypeRequest
-	binary.BigEndian.PutUint64(pkt[5:13], token)
-	return pkt
-}
-
-func parseEchoReply(pkt []byte) (token uint64, observed netip.AddrPort, ok bool) {
-	if len(pkt) < 16 || string(pkt[0:4]) != echoMagic || pkt[4] != echoTypeReply {
-		return 0, netip.AddrPort{}, false
-	}
-	token = binary.BigEndian.Uint64(pkt[5:13])
-	family := pkt[13]
-	port := binary.BigEndian.Uint16(pkt[14:16])
-	switch {
-	case family == 4 && len(pkt) >= 20:
-		var b [4]byte
-		copy(b[:], pkt[16:20])
-		observed = netip.AddrPortFrom(netip.AddrFrom4(b), port)
-	case family == 6 && len(pkt) >= 32:
-		var b [16]byte
-		copy(b[:], pkt[16:32])
-		observed = netip.AddrPortFrom(netip.AddrFrom16(b), port)
-	default:
-		return 0, netip.AddrPort{}, false
-	}
-	return token, observed, true
-}
-
-func newEchoToken() uint64 {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return uint64(time.Now().UnixNano())
-	}
-	return binary.BigEndian.Uint64(b[:])
-}
-
-// ---- Rolling path quality statistics ----
-
-const statsWindowSize = 20
-
-type probeOutcome struct {
-	rttMs float64 // < 0 means lost
-	at    time.Time
-}
-
-type pathStats struct {
-	mu        sync.Mutex
-	window    []probeOutcome
-	lastReply time.Time
-}
-
-func (s *pathStats) record(rttMs float64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.window = append(s.window, probeOutcome{rttMs: rttMs, at: time.Now()})
-	if len(s.window) > statsWindowSize {
-		s.window = s.window[len(s.window)-statsWindowSize:]
-	}
-	if rttMs >= 0 {
-		s.lastReply = time.Now()
-	}
-}
-
-func (s *pathStats) reset() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.window = nil
-}
-
-type pathStatsJSON struct {
-	RttMs           float64 `json:"rttMs"`   // median over window; -1 if no successful samples
-	LossPct         int     `json:"lossPct"` // -1 if no samples
-	Samples         int     `json:"samples"`
-	LastReplyAgeSec float64 `json:"lastReplyAgeSec"` // -1 if never
-}
-
-func (s *pathStats) snapshot() pathStatsJSON {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := pathStatsJSON{RttMs: -1, LossPct: -1, Samples: len(s.window), LastReplyAgeSec: -1}
-	if !s.lastReply.IsZero() {
-		out.LastReplyAgeSec = time.Since(s.lastReply).Seconds()
-	}
-	if len(s.window) == 0 {
-		return out
-	}
-	var rtts []float64
-	lost := 0
-	for _, o := range s.window {
-		if o.rttMs < 0 {
-			lost++
-		} else {
-			rtts = append(rtts, o.rttMs)
-		}
-	}
-	out.LossPct = lost * 100 / len(s.window)
-	if len(rtts) > 0 {
-		sort.Float64s(rtts)
-		out.RttMs = rtts[len(rtts)/2]
-	}
-	return out
-}
 
 // ---- Cellular sockets (interface-bound) ----
 

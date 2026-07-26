@@ -1,3 +1,5 @@
+//go:build darwin
+
 /* SPDX-License-Identifier: MIT
  *
  * Copyright (C) 2018-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -409,11 +411,11 @@ func newNullTunDevice(mtu int) *nullTunDevice {
 	}
 }
 
-func (t *nullTunDevice) File() *os.File            { return nil }
-func (t *nullTunDevice) Flush() error              { return nil }
-func (t *nullTunDevice) MTU() (int, error)         { return t.mtu, nil }
-func (t *nullTunDevice) Name() (string, error)     { return "probe0", nil }
-func (t *nullTunDevice) Events() <-chan tun.Event   { return t.events }
+func (t *nullTunDevice) File() *os.File           { return nil }
+func (t *nullTunDevice) Flush() error             { return nil }
+func (t *nullTunDevice) MTU() (int, error)        { return t.mtu, nil }
+func (t *nullTunDevice) Name() (string, error)    { return "probe0", nil }
+func (t *nullTunDevice) Events() <-chan tun.Event { return t.events }
 
 func (t *nullTunDevice) Read(data []byte, offset int) (int, error) {
 	// Block until closed — no packets to deliver from a null tun.
@@ -971,8 +973,8 @@ func titWrapIPv4UDP(payload []byte, src, dst [4]byte, srcPort, dstPort uint16) [
 	pkt[0] = 0x45 // version=4, IHL=5
 	binary.BigEndian.PutUint16(pkt[2:], uint16(totalLen))
 	binary.BigEndian.PutUint16(pkt[4:], uint16(atomic.AddUint32(&titIPv4PacketID, 1))) // identification
-	pkt[8] = 64  // TTL
-	pkt[9] = 17  // protocol: UDP
+	pkt[8] = 64                                                                        // TTL
+	pkt[9] = 17                                                                        // protocol: UDP
 	copy(pkt[12:16], src[:])
 	copy(pkt[16:20], dst[:])
 	cksum := titIPv4Checksum(pkt[:20])
@@ -994,10 +996,10 @@ func titWrapIPv6UDP(payload []byte, src, dst [16]byte, srcPort, dstPort uint16) 
 	pkt := make([]byte, totalLen)
 
 	// IPv6 header
-	pkt[0] = 0x60 // version=6
+	pkt[0] = 0x60                                       // version=6
 	binary.BigEndian.PutUint16(pkt[4:], uint16(udpLen)) // payload length
-	pkt[6] = 17                                          // next header: UDP
-	pkt[7] = 64                                          // hop limit
+	pkt[6] = 17                                         // next header: UDP
+	pkt[7] = 64                                         // hop limit
 	copy(pkt[8:24], src[:])
 	copy(pkt[24:40], dst[:])
 
@@ -1289,5 +1291,3 @@ func wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle int32) {
 	}
 	h.outerDev.DisableSomeRoamingForBrokenMobileSemantics()
 }
-
-func main() {}

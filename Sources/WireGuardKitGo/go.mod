@@ -1,6 +1,6 @@
 module golang.zx2c4.com/wireguard/apple
 
-go 1.17
+go 1.19
 
 require (
 	golang.org/x/sys v0.5.0
