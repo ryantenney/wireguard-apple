@@ -393,7 +393,7 @@ public class ConnectionHealthMonitor {
         // evaluation (and any switching it leads to) is suspended while blocked.
         guard networkBlockedSince == nil else { return }
 
-        let (currentTx, currentRx) = Self.parseTxRxBytes(from: runtimeConfig)
+        let (currentTx, currentRx) = UAPI.parseTxRxBytes(from: runtimeConfig)
 
         // Counters reset to zero whenever the Go device or its peers are
         // replaced outside our control (adapter.update() uses replace_peers=true,
@@ -677,7 +677,7 @@ public class ConnectionHealthMonitor {
                         self.confirmThenFailover(duration: duration)
                         return
                     }
-                    let age = Self.parseLastHandshakeAge(from: configString)
+                    let age = UAPI.parseLastHandshakeAge(from: configString)
                     if age < self.hotSpareFreshness {
                         self.logHandler(.verbose, "Failover: hot spare '\(nextName)' handshaked \(Int(age))s ago; server-side outage confirmed")
                         self.failoverNow(duration: duration)
@@ -695,7 +695,7 @@ public class ConnectionHealthMonitor {
             adapter.getProbeRuntimeConfiguration(handle: handle) { [weak self] (configString: String?) in
                 guard let self = self else { return }
                 self.workQueue.async {
-                    let age = configString.map(Self.parseLastHandshakeAge) ?? .infinity
+                    let age = configString.map(UAPI.parseLastHandshakeAge) ?? .infinity
                     let probeAge = Date().timeIntervalSince(startedAt)
                     // The probe device was created for this outage, so any handshake it reports
                     // happened after it started. Comparing `age` against `probeAge` would fail
@@ -924,7 +924,7 @@ public class ConnectionHealthMonitor {
                     return
                 }
 
-                let handshakeAge = Self.parseLastHandshakeAge(from: configString)
+                let handshakeAge = UAPI.parseLastHandshakeAge(from: configString)
 
                 if handshakeAge < self.settings.trafficTimeout {
                     // Primary recovered! Promote the probe — preserves the existing WireGuard session.
@@ -1045,7 +1045,7 @@ public class ConnectionHealthMonitor {
                 return
             }
             self.workQueue.async {
-                let handshakeAge = Self.parseLastHandshakeAge(from: configString)
+                let handshakeAge = UAPI.parseLastHandshakeAge(from: configString)
 
                 if handshakeAge < self.settings.trafficTimeout {
                     // Primary recovered!
@@ -1174,7 +1174,7 @@ public class ConnectionHealthMonitor {
         adapter.getProbeRuntimeConfiguration(handle: handle) { [weak self] (configString: String?) in
             guard let self = self else { return }
             self.workQueue.async {
-                let handshakeAge = configString.map { Self.parseLastHandshakeAge(from: $0) } ?? .infinity
+                let handshakeAge = configString.map { UAPI.parseLastHandshakeAge(from: $0) } ?? .infinity
                 guard handshakeAge < Self.hotSpareMaxHandshakeAge else {
                     let name = config.name ?? "config #\(targetIndex)"
                     self.logHandler(.error, "Failover: hot spare for '\(name)' has no live session (handshake \(handshakeAge == .infinity ? "never" : "\(Int(handshakeAge))s ago")), using regular config swap")
@@ -1307,11 +1307,11 @@ public class ConnectionHealthMonitor {
                     adapter.getProbeRuntimeConfiguration(handle: handle) { configString in
                         self.workQueue.async {
                             if let configString = configString {
-                                let age = Self.parseLastHandshakeAge(from: configString)
+                                let age = UAPI.parseLastHandshakeAge(from: configString)
                                 if age < .infinity {
                                     state["hotSpareHandshakeAge"] = age
                                 } else {
-                                    let redacted = Self.redactSecrets(from: configString)
+                                    let redacted = UAPI.redactSecrets(from: configString)
                                     self.logHandler(.verbose, "Failover: hot spare probe (handle \(handle), index \(hotSpareIndex)) has no handshake. UAPI:\n\(redacted)")
                                 }
                             } else {
@@ -1330,60 +1330,6 @@ public class ConnectionHealthMonitor {
 
             completionHandler(state)
         }
-    }
-
-    // MARK: - UAPI Parsing
-
-    /// Parse total tx_bytes and rx_bytes from a UAPI runtime config string.
-    /// Sums across all peers.
-    static func parseTxRxBytes(from uapiConfig: String) -> (tx: UInt64, rx: UInt64) {
-        var totalTx: UInt64 = 0
-        var totalRx: UInt64 = 0
-
-        for line in uapiConfig.split(separator: "\n") {
-            if line.hasPrefix("tx_bytes=") {
-                let value = line.dropFirst("tx_bytes=".count)
-                if let bytes = UInt64(value) {
-                    totalTx += bytes
-                }
-            } else if line.hasPrefix("rx_bytes=") {
-                let value = line.dropFirst("rx_bytes=".count)
-                if let bytes = UInt64(value) {
-                    totalRx += bytes
-                }
-            }
-        }
-
-        return (totalTx, totalRx)
-    }
-
-    /// Strip private_key / preshared_key values from a UAPI dump for safe logging.
-    static func redactSecrets(from uapiConfig: String) -> String {
-        return uapiConfig.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
-            if line.hasPrefix("private_key=") { return "private_key=<redacted>" }
-            if line.hasPrefix("preshared_key=") { return "preshared_key=<redacted>" }
-            return String(line)
-        }.joined(separator: "\n")
-    }
-
-    /// Parse the age of the most recent handshake from a UAPI runtime config string.
-    /// Used for failback probing. Returns `.infinity` if no handshake has ever occurred.
-    static func parseLastHandshakeAge(from uapiConfig: String) -> TimeInterval {
-        var latestHandshakeTimestamp: TimeInterval = 0
-
-        for line in uapiConfig.split(separator: "\n") {
-            if line.hasPrefix("last_handshake_time_sec=") {
-                let value = line.dropFirst("last_handshake_time_sec=".count)
-                if let timestamp = TimeInterval(value), timestamp > latestHandshakeTimestamp {
-                    latestHandshakeTimestamp = timestamp
-                }
-            }
-        }
-
-        if latestHandshakeTimestamp > 0 {
-            return Date().timeIntervalSince1970 - latestHandshakeTimestamp
-        }
-        return .infinity
     }
 
     #if FAILOVER_TESTING
