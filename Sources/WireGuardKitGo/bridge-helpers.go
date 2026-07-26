@@ -39,6 +39,20 @@ func bumpSocketsRetry(dev *device.Device, logger *device.Logger, name string) {
 	}()
 }
 
+// ipcSetWithErrno applies a UAPI configuration and maps failures to the
+// negative errno convention the exports return. name prefixes log lines.
+func ipcSetWithErrno(dev *device.Device, logger *device.Logger, settings string, name string) int64 {
+	err := dev.IpcSet(settings)
+	if err == nil {
+		return 0
+	}
+	logger.Errorf("%s: unable to set IPC settings: %v", name, err)
+	if ipcErr, ok := err.(*device.IPCError); ok {
+		return ipcErr.ErrorCode()
+	}
+	return -1
+}
+
 // dupTUNFile duplicates the packet tunnel provider's utun fd, marks it
 // non-blocking, and wraps it in a tun.Device. Nothing is leaked on error.
 func dupTUNFile(tunFd int32) (tun.Device, error) {

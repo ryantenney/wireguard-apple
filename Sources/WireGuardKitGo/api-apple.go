@@ -156,15 +156,7 @@ func wgSetConfig(tunnelHandle int32, settings *C.char) int64 {
 	if !ok {
 		return -1
 	}
-	err := dev.IpcSet(C.GoString(settings))
-	if err != nil {
-		dev.Errorf("Unable to set IPC settings: %v", err)
-		if ipcErr, ok := err.(*device.IPCError); ok {
-			return ipcErr.ErrorCode()
-		}
-		return -1
-	}
-	return 0
+	return ipcSetWithErrno(dev.Device, dev.Logger, C.GoString(settings), "Tunnel")
 }
 
 //export wgGetConfig
@@ -470,15 +462,7 @@ func wgProbeSetConfig(handle int32, settings *C.char) int64 {
 	if !ok {
 		return -1
 	}
-	err := h.IpcSet(C.GoString(settings))
-	if err != nil {
-		h.Errorf("Probe: unable to set IPC settings: %v", err)
-		if ipcErr, ok := err.(*device.IPCError); ok {
-			return ipcErr.ErrorCode()
-		}
-		return -1
-	}
-	return 0
+	return ipcSetWithErrno(h.Device, h.Logger, C.GoString(settings), "Probe")
 }
 
 //export wgProbeBumpSockets
@@ -1123,14 +1107,7 @@ func wgSetInnerConfigTiT(handle int32, settings *C.char) int64 {
 	if !ok {
 		return -1
 	}
-	if err := h.innerDev.IpcSet(C.GoString(settings)); err != nil {
-		h.innerLogger.Errorf("TiT: unable to update inner config: %v", err)
-		if ipcErr, ok := err.(*device.IPCError); ok {
-			return ipcErr.ErrorCode()
-		}
-		return -1
-	}
-	return 0
+	return ipcSetWithErrno(h.innerDev, h.innerLogger, C.GoString(settings), "TiT inner")
 }
 
 //export wgBumpSocketsTiT
