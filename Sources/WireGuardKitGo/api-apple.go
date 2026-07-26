@@ -66,6 +66,16 @@ func (l CLogger) Printf(format string, args ...interface{}) {
 	C.callLogger(state.fn, state.ctx, C.int(l), cstring(fmt.Sprintf(format, args...)))
 }
 
+// ipcGetCString returns the device's UAPI runtime configuration as a newly
+// allocated C string (freed by the Swift caller), or nil on error.
+func ipcGetCString(dev *device.Device) *C.char {
+	settings, err := dev.IpcGet()
+	if err != nil {
+		return nil
+	}
+	return C.CString(settings)
+}
+
 // newAppleLogger returns a device.Logger routed through the Swift log
 // callback registered via wgSetLogger.
 func newAppleLogger() *device.Logger {
@@ -165,11 +175,7 @@ func wgGetConfig(tunnelHandle int32) *C.char {
 	if !ok {
 		return nil
 	}
-	settings, err := device.IpcGet()
-	if err != nil {
-		return nil
-	}
-	return C.CString(settings)
+	return ipcGetCString(device.Device)
 }
 
 //export wgBumpSockets
@@ -449,11 +455,7 @@ func wgProbeGetConfig(handle int32) *C.char {
 	if !ok {
 		return nil
 	}
-	settings, err := h.IpcGet()
-	if err != nil {
-		return nil
-	}
-	return C.CString(settings)
+	return ipcGetCString(h.Device)
 }
 
 //export wgProbeSetConfig
@@ -1081,11 +1083,7 @@ func wgGetConfigTiT(handle int32) *C.char {
 	if !ok {
 		return nil
 	}
-	settings, err := h.innerDev.IpcGet()
-	if err != nil {
-		return nil
-	}
-	return C.CString(settings)
+	return ipcGetCString(h.innerDev)
 }
 
 //export wgGetOuterConfigTiT
@@ -1094,11 +1092,7 @@ func wgGetOuterConfigTiT(handle int32) *C.char {
 	if !ok {
 		return nil
 	}
-	settings, err := h.outerDev.IpcGet()
-	if err != nil {
-		return nil
-	}
-	return C.CString(settings)
+	return ipcGetCString(h.outerDev)
 }
 
 //export wgSetInnerConfigTiT
