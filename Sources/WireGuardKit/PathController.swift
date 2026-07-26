@@ -84,13 +84,14 @@ public final class PathController {
     /// Cadence for polling probe statistics from the Go bridge.
     private let pollInterval: TimeInterval = 3
 
-    /// Minimum probe samples before quality-based decisions.
-    private let minSamples = 3
+    /// The pure quality-threshold predicates (unit-tested separately).
+    private let policy: PathPolicy
 
     public init(settings: WarmSpareSettings,
                 backend: WarmSparePathBackend,
                 logHandler: @escaping (WireGuardLogLevel, String) -> Void) {
         self.settings = settings
+        self.policy = PathPolicy(settings: settings)
         self.backend = backend
         self.logHandler = logHandler
     }
@@ -256,35 +257,22 @@ public final class PathController {
         }
     }
 
-    private struct PathQuality {
-        let rttMs: Double
-        let lossPct: Int
-        let samples: Int
-
-        init?(_ dict: [String: Any]?) {
-            guard let dict = dict else { return nil }
-            self.rttMs = (dict["rttMs"] as? NSNumber)?.doubleValue ?? -1
-            self.lossPct = (dict["lossPct"] as? NSNumber)?.intValue ?? -1
-            self.samples = (dict["samples"] as? NSNumber)?.intValue ?? 0
-        }
-    }
-
     private func evaluate(stateDict: [String: Any]?) {
         guard isRunning, forcedPath == nil else { return }
-        let primary = PathQuality(stateDict?["primaryPath"] as? [String: Any])
+        let primary = PathQuality(dict: stateDict?["primaryPath"] as? [String: Any])
 
         switch state {
         case .wifiActiveCellCold:
             guard defaultPathUsesWifi, cellAvailable else { return }
             if !settings.adaptiveWarming {
                 warmNow(reason: "continuous warming")
-            } else if let q = primary, isDegrading(q) {
+            } else if let q = primary, policy.isDegrading(q) {
                 warmNow(reason: "Wi-Fi degrading (rtt \(Int(q.rttMs))ms, loss \(q.lossPct)%)")
             }
 
         case .wifiActiveCellWarm:
             guard defaultPathUsesWifi else { return }
-            if let q = primary, isBreaching(q) {
+            if let q = primary, policy.isBreaching(q) {
                 flipToCellular(reason: "Wi-Fi breached thresholds (rtt \(Int(q.rttMs))ms, loss \(q.lossPct)%)")
                 return
             }
@@ -309,7 +297,7 @@ public final class PathController {
             // Flip back only after the dwell elapses with Wi-Fi still the
             // default path and default-path probes not breaching.
             guard defaultPathUsesWifi else { return }
-            if let q = primary, q.samples >= minSamples, isBreaching(q) {
+            if let q = primary, policy.isBreaching(q) {
                 // Wi-Fi is back but bad — restart the dwell.
                 recoveringSince = Date()
                 return
@@ -321,31 +309,13 @@ public final class PathController {
     }
 
     private func trackWifiHealth(_ quality: PathQuality?) {
-        if let q = quality, q.samples >= minSamples, !isDegrading(q) {
+        if let q = quality, q.samples >= policy.minSamples, !policy.isDegrading(q) {
             if wifiHealthySince == nil {
                 wifiHealthySince = Date()
             }
         } else {
             wifiHealthySince = nil
         }
-    }
-
-    /// Hard thresholds: flip when breached.
-    private func isBreaching(_ q: PathQuality) -> Bool {
-        guard q.samples >= minSamples else { return false }
-        if q.rttMs >= 0 && q.rttMs >= Double(settings.switchRttMs) { return true }
-        if q.lossPct >= 0 && q.lossPct >= settings.switchLossPct { return true }
-        // All probes lost is the strongest breach signal of all.
-        if q.rttMs < 0 && q.lossPct >= 100 { return true }
-        return false
-    }
-
-    /// Soft thresholds (two-thirds of the switch thresholds): warm the spare.
-    private func isDegrading(_ q: PathQuality) -> Bool {
-        guard q.samples >= minSamples else { return false }
-        if q.rttMs >= 0 && q.rttMs >= Double(settings.switchRttMs) * 2 / 3 { return true }
-        if q.lossPct >= 0 && q.lossPct >= settings.switchLossPct / 2 { return true }
-        return false
     }
 
     // MARK: - Actions
