@@ -1119,6 +1119,9 @@ class TunnelContainer: NSObject {
         didSet {
             isActivateOnDemandEnabled = tunnelProvider.isOnDemandEnabled && tunnelProvider.isEnabled
             hasOnDemandRules = !(tunnelProvider.onDemandRules ?? []).isEmpty
+            // Suspension state may have changed out-of-process (or via
+            // reload()); refresh it like the other observables above.
+            isOnDemandSuspended = OnDemandSuspensionStore.suspendedTunnelNames.contains(tunnelProvider.localizedDescription ?? name)
         }
     }
 
