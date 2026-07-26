@@ -37,7 +37,7 @@ extension TunnelsManager {
     func refreshFailoverGroupsContaining(tunnelName: String, oldName: String? = nil) {
         for groupTunnel in failoverGroupTunnels {
             guard let proto = groupTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-                  var configNames = proto.providerConfiguration?["FailoverConfigNames"] as? [String] else {
+                  var configNames = proto.providerConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String] else {
                 continue
             }
 
@@ -52,7 +52,7 @@ extension TunnelsManager {
             // Rebuild member keychain refs through the spec so unresolvable
             // members fall back to their stored configs instead of being dropped.
             let existingConfig = proto.providerConfiguration
-            let settings = (existingConfig?["FailoverSettings"] as? Data)
+            let settings = (existingConfig?[ProviderConfigurationKeys.failoverSettings] as? Data)
                 .flatMap { try? JSONDecoder().decode(FailoverSettings.self, from: $0) } ?? FailoverSettings()
             let spec = FailoverGroupSpec(name: groupTunnel.name, tunnelNames: configNames,
                                          settings: settings, onDemandActivation: OnDemandActivation())

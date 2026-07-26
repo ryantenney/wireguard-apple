@@ -80,7 +80,7 @@ class TunnelsManager {
                 // config in the Keychain (pass 2 below) — skip the regular migration and orphan
                 // removal for them. They additionally own one keychain item per member config,
                 // all of which must be whitelisted.
-                let isFailoverGroup = proto.providerConfiguration?["FailoverGroupId"] != nil
+                let isFailoverGroup = proto.providerConfiguration?[ProviderConfigurationKeys.failoverGroupId] != nil
                 let isTiTGroup = proto.providerConfiguration?[ProviderConfigurationKeys.titGroupId] != nil
                 if isFailoverGroup || isTiTGroup {
                     if let ref = proto.passwordReference {
@@ -135,7 +135,7 @@ class TunnelsManager {
             for tunnelManager in tunnelManagers {
                 guard let proto = tunnelManager.protocolConfiguration as? NETunnelProviderProtocol else { continue }
                 let providerConfig = proto.providerConfiguration ?? [:]
-                let isFailoverGroup = providerConfig["FailoverGroupId"] != nil
+                let isFailoverGroup = providerConfig[ProviderConfigurationKeys.failoverGroupId] != nil
                 let isTiTGroup = providerConfig[ProviderConfigurationKeys.titGroupId] != nil
                 guard isFailoverGroup || isTiTGroup else { continue }
                 let name = tunnelManager.localizedDescription ?? "<unknown>"
@@ -155,8 +155,8 @@ class TunnelsManager {
                 // back to any plaintext left by a group whose migration has not run yet.
                 let sourceConfig: String?
                 if isFailoverGroup {
-                    sourceConfig = (providerConfig["FailoverConfigRefs"] as? [Data])?.first.flatMap { Keychain.openReference(called: $0) }
-                        ?? (providerConfig["FailoverConfigs"] as? [String])?.first
+                    sourceConfig = (providerConfig[ProviderConfigurationKeys.failoverConfigRefs] as? [Data])?.first.flatMap { Keychain.openReference(called: $0) }
+                        ?? (providerConfig[ProviderConfigurationKeys.failoverConfigs] as? [String])?.first
                 } else {
                     sourceConfig = (providerConfig[ProviderConfigurationKeys.titOuterConfigRef] as? Data).flatMap { Keychain.openReference(called: $0) }
                         ?? providerConfig[ProviderConfigurationKeys.titOuterConfig] as? String
@@ -207,10 +207,10 @@ class TunnelsManager {
             let loadedTunnelProviders = managers ?? []
             let loadedRegular = loadedTunnelProviders.filter {
                 let config = ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration
-                return config?["FailoverGroupId"] == nil && config?[ProviderConfigurationKeys.titGroupId] == nil
+                return config?[ProviderConfigurationKeys.failoverGroupId] == nil && config?[ProviderConfigurationKeys.titGroupId] == nil
             }
             let loadedFailoverGroups = loadedTunnelProviders.filter {
-                ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverGroupId"] != nil
+                ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[ProviderConfigurationKeys.failoverGroupId] != nil
             }
             let loadedTiTGroups = loadedTunnelProviders.filter {
                 ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[ProviderConfigurationKeys.titGroupId] != nil
@@ -501,7 +501,7 @@ class TunnelsManager {
     private func groupMembershipError(for tunnel: TunnelContainer) -> TunnelsManagerError? {
         let referencingGroups = failoverGroupTunnels.filter { group in
             let proto = group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
-            let names = proto?.providerConfiguration?["FailoverConfigNames"] as? [String] ?? []
+            let names = proto?.providerConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String] ?? []
             return names.contains(tunnel.name)
         }
         if !referencingGroups.isEmpty {
@@ -669,7 +669,7 @@ class TunnelsManager {
         var names: [String] = []
         for group in failoverGroupTunnels {
             let proto = group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
-            let members = proto?.providerConfiguration?["FailoverConfigNames"] as? [String] ?? []
+            let members = proto?.providerConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String] ?? []
             if members.contains(tunnelName) {
                 names.append(group.name)
             }
@@ -690,7 +690,7 @@ class TunnelsManager {
         var names: Set<String> = []
         for manager in managers {
             guard let config = (manager.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration else { continue }
-            if let members = config["FailoverConfigNames"] as? [String] {
+            if let members = config[ProviderConfigurationKeys.failoverConfigNames] as? [String] {
                 names.formUnion(members)
             }
             if let outerName = config[ProviderConfigurationKeys.titOuterName] as? String {
@@ -1129,7 +1129,7 @@ class TunnelContainer: NSObject {
         guard let config = (tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration else {
             return nil
         }
-        if config["FailoverGroupId"] != nil { return .failover }
+        if config[ProviderConfigurationKeys.failoverGroupId] != nil { return .failover }
         if config[ProviderConfigurationKeys.titGroupId] != nil { return .tunnelInTunnel }
         return nil
     }
@@ -1302,7 +1302,7 @@ extension NETunnelProviderManager {
     }
 
     func isEquivalentToFailoverGroup(_ tunnel: TunnelContainer) -> Bool {
-        let myGroupId = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["FailoverGroupId"] as? String
+        let myGroupId = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[ProviderConfigurationKeys.failoverGroupId] as? String
         return myGroupId != nil && myGroupId == tunnel.failoverGroupId
     }
 

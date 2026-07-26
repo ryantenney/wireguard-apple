@@ -104,7 +104,7 @@ final class TunnelStore: ObservableObject {
               let proto = node.container.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
               var providerConfiguration = proto.providerConfiguration,
               let data = try? JSONEncoder().encode(settings) else { return }
-        providerConfiguration["FailoverSettings"] = data
+        providerConfiguration[ProviderConfigurationKeys.failoverSettings] = data
         proto.providerConfiguration = providerConfiguration
         node.container.tunnelProvider.saveToPreferences { error in
             if let error = error {

@@ -71,13 +71,13 @@ struct FailoverGroupSpec: TunnelGroupSpec {
         // fallback when a member tunnel can no longer be resolved.
         var existingRefByName: [String: Data] = [:]
         var legacyConfigByName: [String: String] = [:]
-        let existingNames = (existing?["FailoverConfigNames"] as? [String]) ?? []
-        if let existingRefs = existing?["FailoverConfigRefs"] as? [Data] {
+        let existingNames = (existing?[ProviderConfigurationKeys.failoverConfigNames] as? [String]) ?? []
+        if let existingRefs = existing?[ProviderConfigurationKeys.failoverConfigRefs] as? [Data] {
             for (n, r) in zip(existingNames, existingRefs) {
                 existingRefByName[n] = r
             }
         }
-        if let legacyConfigs = existing?["FailoverConfigs"] as? [String] {
+        if let legacyConfigs = existing?[ProviderConfigurationKeys.failoverConfigs] as? [String] {
             for (n, c) in zip(existingNames, legacyConfigs) {
                 legacyConfigByName[n] = c
             }
@@ -121,11 +121,11 @@ struct FailoverGroupSpec: TunnelGroupSpec {
         }
 
         var providerConfig: [String: Any] = existing ?? [:]
-        providerConfig["FailoverConfigRefs"] = members.map { $0.ref }
-        providerConfig["FailoverConfigNames"] = members.map { $0.name }
-        providerConfig.removeValue(forKey: "FailoverConfigs") // legacy plaintext storage
+        providerConfig[ProviderConfigurationKeys.failoverConfigRefs] = members.map { $0.ref }
+        providerConfig[ProviderConfigurationKeys.failoverConfigNames] = members.map { $0.name }
+        providerConfig.removeValue(forKey: ProviderConfigurationKeys.failoverConfigs) // legacy plaintext storage
         if let settingsData = try? JSONEncoder().encode(settings) {
-            providerConfig["FailoverSettings"] = settingsData
+            providerConfig[ProviderConfigurationKeys.failoverSettings] = settingsData
         }
 
         let obsolete = existingRefByName.values.filter { !kept.contains($0) }
@@ -385,8 +385,8 @@ extension TunnelsManager {
         switch kind {
         case .failover:
             isRunningConfigChanged =
-                (existingConfig?["FailoverConfigNames"] as? [String]) != (buildResult.providerConfiguration["FailoverConfigNames"] as? [String])
-                || (existingConfig?["FailoverSettings"] as? Data) != (buildResult.providerConfiguration["FailoverSettings"] as? Data)
+                (existingConfig?[ProviderConfigurationKeys.failoverConfigNames] as? [String]) != (buildResult.providerConfiguration[ProviderConfigurationKeys.failoverConfigNames] as? [String])
+                || (existingConfig?[ProviderConfigurationKeys.failoverSettings] as? Data) != (buildResult.providerConfiguration[ProviderConfigurationKeys.failoverSettings] as? Data)
         case .tunnelInTunnel:
             isRunningConfigChanged =
                 (existingConfig?[ProviderConfigurationKeys.titOuterName] as? String) != (buildResult.providerConfiguration[ProviderConfigurationKeys.titOuterName] as? String)
@@ -550,7 +550,7 @@ extension TunnelsManager {
         switch kind {
         case .failover:
             let configs: [String]
-            if let refs = providerConfig["FailoverConfigRefs"] as? [Data] {
+            if let refs = providerConfig[ProviderConfigurationKeys.failoverConfigRefs] as? [Data] {
                 configs = refs.compactMap { Keychain.openReference(called: $0) }
                 guard configs.count == refs.count else {
                     wg_log(.error, message: "\(kind.displayName): could not read member configs for live reload")
@@ -558,11 +558,11 @@ extension TunnelsManager {
                     return
                 }
             } else {
-                configs = providerConfig["FailoverConfigs"] as? [String] ?? []
+                configs = providerConfig[ProviderConfigurationKeys.failoverConfigs] as? [String] ?? []
             }
             payload["configs"] = configs
-            payload["names"] = providerConfig["FailoverConfigNames"] as? [String] ?? []
-            if let settingsData = providerConfig["FailoverSettings"] as? Data {
+            payload["names"] = providerConfig[ProviderConfigurationKeys.failoverConfigNames] as? [String] ?? []
+            if let settingsData = providerConfig[ProviderConfigurationKeys.failoverSettings] as? Data {
                 payload["settings"] = settingsData.base64EncodedString()
             }
         case .tunnelInTunnel:
@@ -648,7 +648,7 @@ extension TunnelsManager {
     /// configs. Does not include the group's own passwordReference.
     static func groupMemberConfigReferences(in providerConfiguration: [String: Any]?) -> [Data] {
         var refs: [Data] = []
-        if let failoverRefs = providerConfiguration?["FailoverConfigRefs"] as? [Data] {
+        if let failoverRefs = providerConfiguration?[ProviderConfigurationKeys.failoverConfigRefs] as? [Data] {
             refs.append(contentsOf: failoverRefs)
         }
         if let outerRef = providerConfiguration?[ProviderConfigurationKeys.titOuterConfigRef] as? Data {
@@ -673,9 +673,9 @@ extension NETunnelProviderProtocol {
         guard var config = providerConfiguration else { return false }
         var changed = false
 
-        if let legacyConfigs = config["FailoverConfigs"] as? [String] {
-            if config["FailoverConfigRefs"] == nil {
-                let memberNames = config["FailoverConfigNames"] as? [String] ?? []
+        if let legacyConfigs = config[ProviderConfigurationKeys.failoverConfigs] as? [String] {
+            if config[ProviderConfigurationKeys.failoverConfigRefs] == nil {
+                let memberNames = config[ProviderConfigurationKeys.failoverConfigNames] as? [String] ?? []
                 var refs: [Data] = []
                 for (index, legacyConfig) in legacyConfigs.enumerated() {
                     let memberName = memberNames.indices.contains(index) ? memberNames[index] : "#\(index)"
@@ -690,10 +690,10 @@ extension NETunnelProviderProtocol {
                     }
                     refs.append(ref)
                 }
-                config["FailoverConfigRefs"] = refs
+                config[ProviderConfigurationKeys.failoverConfigRefs] = refs
                 wg_log(.info, message: "Failover: migrated \(refs.count) member configs of group '\(name)' to keychain")
             }
-            config.removeValue(forKey: "FailoverConfigs")
+            config.removeValue(forKey: ProviderConfigurationKeys.failoverConfigs)
             changed = true
         }
 

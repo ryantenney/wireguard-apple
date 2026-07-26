@@ -866,11 +866,11 @@ final class ConnectionDiagnosticsModel {
 
         switch tunnel.groupKind {
         case .some(.failover):
-            let names = providerConfig["FailoverConfigNames"] as? [String] ?? []
+            let names = providerConfig[ProviderConfigurationKeys.failoverConfigNames] as? [String] ?? []
             var rows = names.enumerated().map { index, name in
                 DiagnosticsRow(key: index == 0 ? "Primary" : "Failover #\(index)", value: name)
             }
-            if let data = providerConfig["FailoverSettings"] as? Data,
+            if let data = providerConfig[ProviderConfigurationKeys.failoverSettings] as? Data,
                let settings = try? JSONDecoder().decode(FailoverSettings.self, from: data) {
                 rows.append(DiagnosticsRow(key: "Traffic Timeout", value: "\(Int(settings.trafficTimeout))s"))
                 rows.append(DiagnosticsRow(key: "Health Check Interval", value: "\(Int(settings.healthCheckInterval))s"))

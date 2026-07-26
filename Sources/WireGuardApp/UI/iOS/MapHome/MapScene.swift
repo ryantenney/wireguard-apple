@@ -62,7 +62,7 @@ extension TunnelContainer {
     }
 
     var mapHomeFailoverMemberNames: [String] {
-        return mapHomeProviderConfiguration?["FailoverConfigNames"] as? [String] ?? []
+        return mapHomeProviderConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String] ?? []
     }
 
     var mapHomeTiTOuterName: String? {

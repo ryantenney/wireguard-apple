@@ -215,11 +215,11 @@ struct FailoverGroupConfig {
 
     /// Serialize a failover group from its NETunnelProviderManager provider config.
     static func configString(from providerConfig: [String: Any]) -> String? {
-        guard let configNames = providerConfig["FailoverConfigNames"] as? [String],
+        guard let configNames = providerConfig[ProviderConfigurationKeys.failoverConfigNames] as? [String],
               configNames.count >= 2 else { return nil }
 
         var settings = FailoverSettings()
-        if let settingsData = providerConfig["FailoverSettings"] as? Data,
+        if let settingsData = providerConfig[ProviderConfigurationKeys.failoverSettings] as? Data,
            let decoded = try? JSONDecoder().decode(FailoverSettings.self, from: settingsData) {
             settings = decoded
         }

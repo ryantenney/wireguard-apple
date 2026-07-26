@@ -734,7 +734,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// group names when applicable.
     private func resolveDisplayName() -> String {
         let proto = self.protocolConfiguration as? NETunnelProviderProtocol
-        if let configNames = proto?.providerConfiguration?["FailoverConfigNames"] as? [String], let firstName = configNames.first {
+        if let configNames = proto?.providerConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String], let firstName = configNames.first {
             return firstName
         } else if let config = proto?.asTunnelConfiguration() {
             return config.name ?? "WireGuard"
@@ -841,7 +841,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // created before the keychain migration (the app migrates them on its
         // next launch).
         let configStrings: [String?]
-        if let refs = providerConfig?["FailoverConfigRefs"] as? [Data] {
+        if let refs = providerConfig?[ProviderConfigurationKeys.failoverConfigRefs] as? [Data] {
             configStrings = refs.map { ref in
                 let config = Keychain.openReference(called: ref)
                 if config == nil {
@@ -849,14 +849,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
                 return config
             }
-        } else if let legacyConfigs = providerConfig?["FailoverConfigs"] as? [String] {
+        } else if let legacyConfigs = providerConfig?[ProviderConfigurationKeys.failoverConfigs] as? [String] {
             configStrings = legacyConfigs
         } else {
             return
         }
 
-        let names = providerConfig?["FailoverConfigNames"] as? [String] ?? []
-        if let settingsData = providerConfig?["FailoverSettings"] as? Data,
+        let names = providerConfig?[ProviderConfigurationKeys.failoverConfigNames] as? [String] ?? []
+        if let settingsData = providerConfig?[ProviderConfigurationKeys.failoverSettings] as? Data,
            let settings = try? JSONDecoder().decode(FailoverSettings.self, from: settingsData) {
             failoverSettings = settings
         }

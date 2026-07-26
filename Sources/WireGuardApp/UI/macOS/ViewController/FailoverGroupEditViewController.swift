@@ -249,9 +249,9 @@ class FailoverGroupEditViewController: NSViewController {
         if let tunnel = tunnel,
            let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol {
             let providerConfig = proto.providerConfiguration ?? [:]
-            self.selectedTunnelNames = (providerConfig["FailoverConfigNames"] as? [String]) ?? []
+            self.selectedTunnelNames = (providerConfig[ProviderConfigurationKeys.failoverConfigNames] as? [String]) ?? []
             var settings = FailoverSettings()
-            if let settingsData = providerConfig["FailoverSettings"] as? Data {
+            if let settingsData = providerConfig[ProviderConfigurationKeys.failoverSettings] as? Data {
                 settings = (try? JSONDecoder().decode(FailoverSettings.self, from: settingsData)) ?? FailoverSettings()
             }
             self.trafficTimeout = settings.trafficTimeout

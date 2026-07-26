@@ -119,8 +119,8 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
     override func loadGroupData() {
         guard let proto = tunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol else { return }
         let providerConfig = proto.providerConfiguration ?? [:]
-        tunnelNames = (providerConfig["FailoverConfigNames"] as? [String]) ?? []
-        if let settingsData = providerConfig["FailoverSettings"] as? Data {
+        tunnelNames = (providerConfig[ProviderConfigurationKeys.failoverConfigNames] as? [String]) ?? []
+        if let settingsData = providerConfig[ProviderConfigurationKeys.failoverSettings] as? Data {
             settings = (try? JSONDecoder().decode(FailoverSettings.self, from: settingsData)) ?? FailoverSettings()
         } else {
             settings = FailoverSettings()

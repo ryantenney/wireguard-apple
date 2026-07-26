@@ -100,12 +100,12 @@ final class TunnelNode: ObservableObject, Identifiable {
 
     /// Ordered member names for a failover group.
     var failoverMemberNames: [String] {
-        (providerConfiguration?["FailoverConfigNames"] as? [String]) ?? []
+        (providerConfiguration?[ProviderConfigurationKeys.failoverConfigNames] as? [String]) ?? []
     }
 
     /// Stored failover settings for a failover group (defaults if unreadable).
     var failoverSettings: FailoverSettings {
-        if let data = providerConfiguration?["FailoverSettings"] as? Data,
+        if let data = providerConfiguration?[ProviderConfigurationKeys.failoverSettings] as? Data,
            let decoded = try? JSONDecoder().decode(FailoverSettings.self, from: data) {
             return decoded
         }

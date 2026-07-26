@@ -30,7 +30,11 @@ enum ProviderConfigurationKeys {
     /// Stable identity of a failover group manager.
     static let failoverGroupId = "FailoverGroupId"
 
-    /// wg-quick config strings, index 0 = primary.
+    /// Keychain references to the member wg-quick configs, index 0 = primary.
+    static let failoverConfigRefs = "FailoverConfigRefs"
+
+    /// Legacy plaintext member configs, superseded by `failoverConfigRefs`.
+    /// Read for migration/fallback only; never written.
     static let failoverConfigs = "FailoverConfigs"
 
     /// Display names parallel to `failoverConfigs`.
