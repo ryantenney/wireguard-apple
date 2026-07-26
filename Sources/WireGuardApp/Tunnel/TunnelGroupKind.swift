@@ -29,10 +29,10 @@ enum TunnelGroupKind: String, CaseIterable {
         }
     }
 
-    var ipcMessageType: UInt8 {
+    var ipcMessage: ProviderMessage {
         switch self {
-        case .failover: return 1
-        case .tunnelInTunnel: return 4
+        case .failover: return .failoverState
+        case .tunnelInTunnel: return .titState
         }
     }
 }

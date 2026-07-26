@@ -1185,7 +1185,7 @@ class TunnelContainer: NSObject {
             completionHandler(tunnelConfiguration)
             return
         }
-        guard nil != (try? session.sendProviderMessage(Data([ UInt8(0) ]), responseHandler: {
+        guard nil != (try? session.sendProviderMessage(ProviderMessage.runtimeConfiguration.data, responseHandler: {
             guard self.status != .inactive, let data = $0, let base = self.tunnelConfiguration, let settings = String(data: data, encoding: .utf8) else {
                 completionHandler(self.tunnelConfiguration)
                 return

@@ -52,14 +52,14 @@ extension TunnelsManager {
     /// path, warm/cold, per-path RTT/loss, EIM verdict, and controller state.
     /// Returns `nil` if the tunnel is not active or warm spare is not engaged.
     func getWarmSpareStatus(for tunnel: TunnelContainer, completionHandler: @escaping ([String: Any]?) -> Void) {
-        sendWarmSpareMessage(Data([7]), to: tunnel, completionHandler: completionHandler)
+        sendWarmSpareMessage(ProviderMessage.warmSpareStatus.data, to: tunnel, completionHandler: completionHandler)
     }
 
     /// Ask the running extension to run the EIM (endpoint-independent
     /// mapping) self-test. The verdict appears in `getWarmSpareStatus` within
     /// a few seconds.
     func runWarmSpareEimTest(for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
-        sendWarmSpareMessage(Data([8]), to: tunnel) { response in
+        sendWarmSpareMessage(ProviderMessage.warmSpareRunEimTest.data, to: tunnel) { response in
             completionHandler(response?["started"] as? Bool ?? false)
         }
     }
@@ -68,13 +68,13 @@ extension TunnelsManager {
     /// Debug: force the warm spare path. 0 = primary, 1 = cellular,
     /// `nil` = resume automatic control.
     func debugForceWarmSparePath(_ path: Int?, for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
-        let pathByte: UInt8
+        let override: WarmSparePathOverride
         switch path {
-        case 0: pathByte = 0
-        case 1: pathByte = 1
-        default: pathByte = 2
+        case 0: override = .primary
+        case 1: override = .cellular
+        default: override = .automatic
         }
-        sendWarmSpareMessage(Data([9, pathByte]), to: tunnel) { response in
+        sendWarmSpareMessage(override.message, to: tunnel) { response in
             completionHandler(response?["success"] as? Bool ?? false)
         }
     }

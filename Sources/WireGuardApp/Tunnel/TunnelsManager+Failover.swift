@@ -118,22 +118,22 @@ extension TunnelsManager {
     #if FAILOVER_TESTING
     /// Debug: send a force-failover command to the network extension.
     func debugForceFailover(for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
-        debugSendCommand(messageType: 2, for: tunnel, completionHandler: completionHandler)
+        debugSendCommand(.debugForceFailover, for: tunnel, completionHandler: completionHandler)
     }
 
     /// Debug: send a force-failback command to the network extension.
     func debugForceFailback(for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
-        debugSendCommand(messageType: 3, for: tunnel, completionHandler: completionHandler)
+        debugSendCommand(.debugForceFailback, for: tunnel, completionHandler: completionHandler)
     }
 
-    private func debugSendCommand(messageType: UInt8, for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
+    private func debugSendCommand(_ message: ProviderMessage, for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
         guard tunnel.status == .active,
               let session = tunnel.tunnelProvider.connection as? NETunnelProviderSession else {
             completionHandler(false)
             return
         }
         do {
-            try session.sendProviderMessage(Data([messageType])) { responseData in
+            try session.sendProviderMessage(message.data) { responseData in
                 guard let data = responseData,
                       let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let success = result["success"] as? Bool else {
@@ -143,7 +143,7 @@ extension TunnelsManager {
                 completionHandler(success)
             }
         } catch {
-            wg_log(.error, message: "Failover: debug command \(messageType) failed: \(error)")
+            wg_log(.error, message: "Failover: debug command \(message) failed: \(error)")
             completionHandler(false)
         }
     }

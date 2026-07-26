@@ -6,9 +6,6 @@ import NetworkExtension
 
 extension TunnelsManager {
 
-    /// IPC message type for the connection details payload (see `PacketTunnelProvider.buildDiagnostics`).
-    static let connectionDiagnosticsMessageType: UInt8 = 5
-
     /// Ask the running network extension for the full connection details payload:
     /// adapter state, live peer stats, applied network settings, network path, host
     /// interfaces, routing table, failover/TiT state, session events, and process info.
@@ -21,7 +18,7 @@ extension TunnelsManager {
         }
 
         do {
-            try session.sendProviderMessage(Data([TunnelsManager.connectionDiagnosticsMessageType])) { responseData in
+            try session.sendProviderMessage(ProviderMessage.connectionDiagnostics.data) { responseData in
                 guard let data = responseData,
                       let diagnostics = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     completionHandler(nil)

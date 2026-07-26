@@ -509,10 +509,6 @@ extension TunnelsManager {
 
     // MARK: - Live configuration reload
 
-    /// IPC message type that hands a running group its updated configuration (see
-    /// `PacketTunnelProvider.reloadGroupConfiguration`).
-    static let groupReloadMessageType: UInt8 = 6
-
     /// Push the group's current providerConfiguration into its running extension so the change
     /// takes effect without dropping the VPN. Falls back to a restart when the extension does not
     /// answer or reports failure. No-op when the group is not running.
@@ -591,7 +587,7 @@ extension TunnelsManager {
             completionHandler(false)
             return
         }
-        var message = Data([TunnelsManager.groupReloadMessageType])
+        var message = ProviderMessage.groupReload.data
         message.append(json)
 
         do {
@@ -621,7 +617,7 @@ extension TunnelsManager {
         }
 
         do {
-            try session.sendProviderMessage(Data([kind.ipcMessageType])) { responseData in
+            try session.sendProviderMessage(kind.ipcMessage.data) { responseData in
                 guard let data = responseData,
                       let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     completionHandler(nil)
