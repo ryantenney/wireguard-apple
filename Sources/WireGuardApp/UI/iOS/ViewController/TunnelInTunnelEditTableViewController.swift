@@ -235,31 +235,10 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
     }
 
     private func onDemandCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
-        let field = onDemandFields[indexPath.row]
-        if indexPath.row < 2 {
-            let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
-            cell.message = field.localizedUIString
-            cell.isOn = onDemandViewModel.isEnabled(field: field)
-            cell.onSwitchToggled = { [weak self] isOn in
-                guard let self = self else { return }
-                self.onDemandViewModel.setEnabled(field: field, isEnabled: isOn)
-                let section = Section.onDemand.rawValue
-                let indexPath = IndexPath(row: 2, section: section)
-                if field == .wiFiInterface {
-                    if isOn {
-                        tableView.insertRows(at: [indexPath], with: .fade)
-                    } else {
-                        tableView.deleteRows(at: [indexPath], with: .fade)
-                    }
-                }
-            }
-            return cell
-        } else {
-            let cell: ChevronCell = tableView.dequeueReusableCell(for: indexPath)
-            cell.message = field.localizedUIString
-            cell.detailMessage = onDemandViewModel.localizedSSIDDescription
-            return cell
-        }
+        return groupOnDemandCell(for: tableView, at: indexPath,
+                                 fields: onDemandFields,
+                                 viewModel: onDemandViewModel,
+                                 onDemandSection: Section.onDemand.rawValue)
     }
 
     // MARK: - UITableViewDelegate
@@ -312,12 +291,7 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
 
     private func confirmDelete() {
         guard let groupTunnel = groupTunnel else { return }
-        let alert = UIAlertController(
-            title: "Delete Tunnel-in-Tunnel Group",
-            message: "Are you sure you want to delete '\(groupTunnel.name)'? This won't delete the individual tunnels.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+        confirmGroupDelete(groupName: groupTunnel.name, title: "Delete Tunnel-in-Tunnel Group") { [weak self] in
             guard let self = self else { return }
             self.tunnelsManager.removeTiTGroup(tunnel: groupTunnel) { [weak self] error in
                 guard let self = self else { return }
@@ -328,9 +302,7 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
                 self.delegate?.titGroupDeleted(groupTunnel)
                 self.dismiss(animated: true)
             }
-        })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
+        }
     }
 }
 
