@@ -44,6 +44,7 @@ func (s *pathStats) reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.window = nil
+	s.lastReply = time.Time{}
 }
 
 type pathStatsJSON struct {

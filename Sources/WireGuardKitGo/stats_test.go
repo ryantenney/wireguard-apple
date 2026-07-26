@@ -58,6 +58,19 @@ func TestSnapshotAllLost(t *testing.T) {
 	}
 }
 
+func TestResetClearsAllState(t *testing.T) {
+	var s pathStats
+	s.record(25)
+	s.reset()
+	snap := s.snapshot()
+	if snap.Samples != 0 {
+		t.Fatalf("samples = %d after reset, want 0", snap.Samples)
+	}
+	if snap.LastReplyAgeSec != -1 {
+		t.Fatalf("lastReplyAgeSec = %v after reset, want -1 — stale reply age must not survive a reset", snap.LastReplyAgeSec)
+	}
+}
+
 func TestWindowTrimsToFixedSize(t *testing.T) {
 	var s pathStats
 	// Fill beyond the window with losses, then overwrite with successes.
