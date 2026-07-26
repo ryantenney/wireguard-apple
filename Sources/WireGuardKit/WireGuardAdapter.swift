@@ -198,24 +198,49 @@ public class WireGuardAdapter {
         // can happen after deallocation.
         wgSetLogger(nil, nil)
 
-        // Cancel network monitor
+        // Last-resort teardown for an adapter that was never explicitly
+        // stopped. Safe off-queue: every workQueue block captures self
+        // strongly, so none can still be pending here, and the Go bridge's
+        // handle maps and logger are internally synchronized. Prefer the
+        // explicit `shutdown()` path — this exists for early-failure cases
+        // where the provider never got that far.
+        teardownResources()
+    }
+
+    /// Final, deterministic teardown on the adapter's work queue: stops the
+    /// tunnel (if still up), probes, the warm spare controller, and the
+    /// network monitor, then unregisters the Go log callback. Idempotent.
+    /// Called by the provider at the end of `stopTunnel` so teardown does not
+    /// rely on `deinit` timing.
+    public func shutdown() {
+        workQueue.async {
+            self.teardownResources()
+            wgSetLogger(nil, nil)
+        }
+    }
+
+    /// Tear down everything this adapter owns and enter `.stopped`.
+    /// Must run on `workQueue`, except from `deinit` (see comment there).
+    private func teardownResources() {
         networkMonitor?.cancel()
-
-        // Stop all background probes
+        networkMonitor = nil
+        titOuterSettingsGenerator = nil
+        titOuterIfaceIP = nil
+        lastAppliedNetworkSettings = nil
         stopAllProbes()
-
-        // Stop the warm spare path controller
         pathController?.stop()
+        pathController = nil
+        warmSpareSettings = nil
 
-        // Shutdown the tunnel
-        switch self.state {
+        switch state {
         case .started(let handle, _):
             wgTurnOff(handle)
         case .startedTiT(let handle, _):
             wgTurnOffTiT(handle)
-        default:
+        case .temporaryShutdown, .temporaryShutdownTiT, .stopped:
             break
         }
+        state = .stopped
     }
 
     // MARK: - Public methods
@@ -461,32 +486,12 @@ public class WireGuardAdapter {
     /// - Parameter completionHandler: completion handler.
     public func stop(completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
         workQueue.async {
-            switch self.state {
-            case .started(let handle, _):
-                wgTurnOff(handle)
-
-            case .startedTiT(let handle, _):
-                wgTurnOffTiT(handle)
-
-            case .temporaryShutdown, .temporaryShutdownTiT:
-                break
-
-            case .stopped:
+            if case .stopped = self.state {
                 completionHandler(.invalidState)
                 return
             }
 
-            self.networkMonitor?.cancel()
-            self.networkMonitor = nil
-            self.titOuterSettingsGenerator = nil
-            self.titOuterIfaceIP = nil
-            self.lastAppliedNetworkSettings = nil
-            self.stopAllProbes()
-            self.pathController?.stop()
-            self.pathController = nil
-            self.warmSpareSettings = nil
-
-            self.state = .stopped
+            self.teardownResources()
 
             completionHandler(nil)
         }

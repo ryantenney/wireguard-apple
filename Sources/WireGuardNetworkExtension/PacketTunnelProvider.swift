@@ -177,6 +177,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             if let error = error {
                 wg_log(.error, message: "Failed to stop WireGuard adapter: \(error.localizedDescription)")
             }
+            // Deterministic final teardown (unregisters the Go log callback)
+            // instead of relying on deinit timing.
+            self.adapter.shutdown()
             completionHandler()
 
             #if os(macOS)
