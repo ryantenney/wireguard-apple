@@ -1305,15 +1305,22 @@ public class WireGuardAdapter {
                 wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle)
                 wgBumpSocketsTiT(handle)
             } else {
-                self.logHandler(.verbose, "TiT: Connectivity offline, pausing backend.")
                 // Capture enough state to restart TiT on reconnect.
-                if let outerSettingsGenerator = self.titOuterSettingsGenerator {
-                    let (outerWgConfig, _) = outerSettingsGenerator.uapiConfiguration()
-                    let outerIfaceIP = self.titOuterIfaceIP ?? "10.200.0.1"
-                    self.state = .temporaryShutdownTiT(innerSettingsGenerator, outerWgConfig, outerIfaceIP)
-                } else {
-                    self.state = .temporaryShutdown(innerSettingsGenerator)
+                guard let outerSettingsGenerator = self.titOuterSettingsGenerator else {
+                    // Should be impossible: startTunnelInTunnel stores the
+                    // generator before entering .startedTiT. Falling back to
+                    // .temporaryShutdown here (as this code once did) would
+                    // silently demote the tunnel to a plain non-TiT tunnel on
+                    // resume. Instead keep the backend running through the
+                    // offline window; the satisfied-path branch bumps its
+                    // sockets when connectivity returns.
+                    self.logHandler(.error, "TiT: missing outer settings generator on offline transition; keeping backend running")
+                    return
                 }
+                self.logHandler(.verbose, "TiT: Connectivity offline, pausing backend.")
+                let (outerWgConfig, _) = outerSettingsGenerator.uapiConfiguration()
+                let outerIfaceIP = self.titOuterIfaceIP ?? "10.200.0.1"
+                self.state = .temporaryShutdownTiT(innerSettingsGenerator, outerWgConfig, outerIfaceIP)
                 wgTurnOffTiT(handle)
             }
 
