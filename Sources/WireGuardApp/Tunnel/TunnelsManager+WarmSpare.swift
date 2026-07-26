@@ -52,14 +52,14 @@ extension TunnelsManager {
     /// path, warm/cold, per-path RTT/loss, EIM verdict, and controller state.
     /// Returns `nil` if the tunnel is not active or warm spare is not engaged.
     func getWarmSpareStatus(for tunnel: TunnelContainer, completionHandler: @escaping ([String: Any]?) -> Void) {
-        sendWarmSpareMessage(Data([5]), to: tunnel, completionHandler: completionHandler)
+        sendWarmSpareMessage(Data([7]), to: tunnel, completionHandler: completionHandler)
     }
 
     /// Ask the running extension to run the EIM (endpoint-independent
     /// mapping) self-test. The verdict appears in `getWarmSpareStatus` within
     /// a few seconds.
     func runWarmSpareEimTest(for tunnel: TunnelContainer, completionHandler: @escaping (Bool) -> Void) {
-        sendWarmSpareMessage(Data([6]), to: tunnel) { response in
+        sendWarmSpareMessage(Data([8]), to: tunnel) { response in
             completionHandler(response?["started"] as? Bool ?? false)
         }
     }
@@ -74,7 +74,7 @@ extension TunnelsManager {
         case 1: pathByte = 1
         default: pathByte = 2
         }
-        sendWarmSpareMessage(Data([7, pathByte]), to: tunnel) { response in
+        sendWarmSpareMessage(Data([9, pathByte]), to: tunnel) { response in
             completionHandler(response?["success"] as? Bool ?? false)
         }
     }

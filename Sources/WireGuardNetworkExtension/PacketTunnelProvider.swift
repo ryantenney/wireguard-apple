@@ -199,14 +199,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)? = nil) {
         guard let completionHandler = completionHandler else { return }
-        guard messageData.count >= 1 else {
+        guard messageData.count >= 1, let message = ProviderMessage(rawValue: messageData[0]) else {
             completionHandler(nil)
             return
         }
 
-        switch messageData[0] {
-        case 0:
-            // Existing: get runtime configuration
+        switch message {
+        case .runtimeConfiguration:
             adapter.getRuntimeConfiguration { settings in
                 var data: Data?
                 if let settings = settings {
@@ -215,7 +214,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(data)
             }
 
-        case 1:
+        case .failoverState:
             // Failover: get current failover state + runtime stats
             let state: [String: Any] = [
                 "activeIndex": activeConfigIndex,
@@ -269,8 +268,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
 
         #if FAILOVER_TESTING
-        case 2:
-            // Debug: force failover to next config
+        case .debugForceFailover:
             guard let monitor = healthMonitor else {
                 completionHandler(nil)
                 return
@@ -280,8 +278,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(try? JSONSerialization.data(withJSONObject: result))
             }
 
-        case 3:
-            // Debug: force failback to primary
+        case .debugForceFailback:
             guard let monitor = healthMonitor else {
                 completionHandler(nil)
                 return
@@ -292,44 +289,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
         #endif
 
-        case 5:
-            // Warm spare: get merged status (Go bridge stats + path controller state)
-            adapter.getWarmSpareStatus { status in
-                guard let status = status else {
-                    completionHandler(nil)
-                    return
-                }
-                completionHandler(try? JSONSerialization.data(withJSONObject: status))
-            }
-
-        case 6:
-            // Warm spare: run the EIM (endpoint-independent mapping) self-test.
-            // The verdict lands in the message-5 status within a few seconds.
-            adapter.runWarmSpareEimTest { started in
-                let result: [String: Any] = ["started": started]
-                completionHandler(try? JSONSerialization.data(withJSONObject: result))
-            }
-
-        #if FAILOVER_TESTING
-        case 7:
-            // Debug: force the warm spare active path.
-            // Byte 1: 0 = primary, 1 = cellular, 2 = resume automatic control.
-            guard messageData.count >= 2 else {
-                completionHandler(nil)
-                return
-            }
-            let path: WarmSparePath?
-            switch messageData[1] {
-            case 0: path = .primary
-            case 1: path = .cellular
-            default: path = nil
-            }
-            adapter.debugForceWarmSparePath(path)
-            completionHandler(try? JSONSerialization.data(withJSONObject: ["success": true]))
-        #endif
-
-        case 4:
-            // TiT: get runtime stats for both INNER and OUTER tunnels
+        case .titState:
             adapter.getTiTRuntimeConfigurations { innerConfig, outerConfig in
                 var state: [String: Any] = [:]
                 if let innerConfig = innerConfig {
@@ -353,13 +313,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(try? JSONSerialization.data(withJSONObject: state))
             }
 
-        case 5:
-            // Connection details: everything the app needs for the stats/debug view
+        case .connectionDiagnostics:
+            // Everything the app needs for the stats/debug view
             buildDiagnostics { diagnostics in
                 completionHandler(try? JSONSerialization.data(withJSONObject: diagnostics))
             }
 
-        case 6:
+        case .groupReload:
             // Live reload of a group's configuration after a member or the group was edited
             guard let payload = try? JSONSerialization.jsonObject(with: messageData.dropFirst()) as? [String: Any] else {
                 completionHandler(try? JSONSerialization.data(withJSONObject: ["success": false]))
@@ -369,8 +329,40 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(try? JSONSerialization.data(withJSONObject: ["success": success]))
             }
 
-        default:
+        case .warmSpareStatus:
+            adapter.getWarmSpareStatus { status in
+                guard let status = status else {
+                    completionHandler(nil)
+                    return
+                }
+                completionHandler(try? JSONSerialization.data(withJSONObject: status))
+            }
+
+        case .warmSpareRunEimTest:
+            // The verdict lands in the warmSpareStatus response within a few seconds.
+            adapter.runWarmSpareEimTest { started in
+                let result: [String: Any] = ["started": started]
+                completionHandler(try? JSONSerialization.data(withJSONObject: result))
+            }
+
+        #if FAILOVER_TESTING
+        case .debugForceWarmSparePath:
+            guard messageData.count >= 2 else {
+                completionHandler(nil)
+                return
+            }
+            let path: WarmSparePath?
+            switch WarmSparePathOverride(rawValue: messageData[1]) {
+            case .primary: path = .primary
+            case .cellular: path = .cellular
+            case .automatic, nil: path = nil
+            }
+            adapter.debugForceWarmSparePath(path)
+            completionHandler(try? JSONSerialization.data(withJSONObject: ["success": true]))
+        #else
+        case .debugForceFailover, .debugForceFailback, .debugForceWarmSparePath:
             completionHandler(nil)
+        #endif
         }
     }
 
