@@ -118,6 +118,7 @@ class TunnelsManager {
             Keychain.deleteReferences(except: refs)
             #if os(iOS)
             RecentTunnelsTracker.cleanupTunnels(except: tunnelNames)
+            EndpointLocationStore.cleanupTunnels(except: tunnelNames)
             #endif
 
             // Finalize any session-history record left orphaned by an unclean extension exit.
@@ -389,6 +390,7 @@ class TunnelsManager {
                 OnDemandSuspensionStore.handleTunnelRenamed(from: oldName, to: tunnelName)
                 #if os(iOS)
                 RecentTunnelsTracker.handleTunnelRenamed(oldName: oldName, newName: tunnelName)
+                EndpointLocationStore.handleTunnelRenamed(oldName: oldName, newName: tunnelName)
                 #endif
             }
             self.tunnelsListDelegate?.tunnelModified(at: self.tunnels.firstIndex(of: tunnel)!)
@@ -484,6 +486,7 @@ class TunnelsManager {
 
             #if os(iOS)
             RecentTunnelsTracker.handleTunnelRemoved(tunnelName: tunnel.name)
+            EndpointLocationStore.handleTunnelRemoved(tunnelName: tunnel.name)
             #endif
         }
     }

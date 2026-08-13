@@ -26,6 +26,9 @@ class TunnelsListTableViewController: UIViewController {
     private var failoverStateTimer: Timer?
     private var failoverStateConfigNames: [String: String] = [:] // groupId -> activeConfigName
 
+    // Deferred presentation of Map Home at launch, until the view is in a window
+    private var pendingMapHomeAtLaunch = false
+
     let tableView: UITableView = {
         let tableView = UITableView(frame: CGRect.zero, style: .grouped)
         tableView.estimatedRowHeight = 60
@@ -105,7 +108,9 @@ class TunnelsListTableViewController: UIViewController {
     func handleTableStateChange() {
         switch tableState {
         case .normal:
-            navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addButtonTapped(sender:)))
+            let addItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addButtonTapped(sender:)))
+            let mapItem = UIBarButtonItem(image: UIImage(systemName: "globe.americas.fill"), style: .plain, target: self, action: #selector(mapHomeButtonTapped))
+            navigationItem.rightBarButtonItems = [addItem, mapItem]
             navigationItem.leftBarButtonItem = UIBarButtonItem(title: tr("tunnelsListSettingsButtonTitle"), style: .plain, target: self, action: #selector(settingsButtonTapped(sender:)))
         case .rowSwiped:
             navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(doneButtonTapped))
@@ -146,6 +151,14 @@ class TunnelsListTableViewController: UIViewController {
     override func viewWillAppear(_: Bool) {
         if let selectedRowIndexPath = tableView.indexPathForSelectedRow {
             tableView.deselectRow(at: selectedRowIndexPath, animated: false)
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if pendingMapHomeAtLaunch {
+            pendingMapHomeAtLaunch = false
+            presentMapHome(animated: false)
         }
     }
 
@@ -203,6 +216,27 @@ class TunnelsListTableViewController: UIViewController {
         let settingsNC = UINavigationController(rootViewController: settingsVC)
         settingsNC.modalPresentationStyle = .formSheet
         present(settingsNC, animated: true)
+    }
+
+    @objc func mapHomeButtonTapped() {
+        presentMapHome(animated: true)
+    }
+
+    /// Presents the Map Home landing page as soon as this view controller is
+    /// in a window (called at launch when the user has enabled "Open at launch").
+    func presentMapHomeAtLaunch() {
+        if viewIfLoaded?.window != nil {
+            presentMapHome(animated: false)
+        } else {
+            pendingMapHomeAtLaunch = true
+        }
+    }
+
+    func presentMapHome(animated: Bool) {
+        guard let tunnelsManager = tunnelsManager else { return }
+        guard presentedViewController == nil else { return }
+        let mapHomeVC = MapHomeViewController(tunnelsManager: tunnelsManager)
+        present(mapHomeVC, animated: animated)
     }
 
     func presentViewControllerForTunnelCreation(tunnelsManager: TunnelsManager) {
