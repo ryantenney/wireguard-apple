@@ -635,7 +635,7 @@ public class WireGuardAdapter {
         }
     }
 
-    private static func describe(_ endpoint: NWEndpoint) -> String {
+    private static func describe(_ endpoint: Network.NWEndpoint) -> String {
         if case .hostPort(let host, _) = endpoint {
             return "\(host)"
         }

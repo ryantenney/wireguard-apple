@@ -328,14 +328,17 @@ char *wgd_dump_routing_table(void)
     int mib[6] = { CTL_NET, PF_ROUTE, 0, AF_UNSPEC, NET_RT_DUMP, 0 };
     size_t needed = 0;
     char *table = NULL;
+    int tableIsEmpty = 0;
     struct wgd_buffer out = { NULL, 0, 0, 0 };
 
     /* The table can grow between the size query and the fetch; retry a few times. */
     for (int attempt = 0; attempt < 5; ++attempt) {
         if (sysctl(mib, 6, NULL, &needed, NULL, 0) < 0)
             return NULL;
-        if (needed == 0)
+        if (needed == 0) {
+            tableIsEmpty = 1;
             break;
+        }
         needed += needed / 8 + 1024;
         table = malloc(needed);
         if (!table)
@@ -348,7 +351,7 @@ char *wgd_dump_routing_table(void)
             return NULL;
     }
     if (!table)
-        return wgd_empty_string();
+        return tableIsEmpty ? wgd_empty_string() : NULL;
 
     const char *cursor = table;
     const char *end = table + needed;
