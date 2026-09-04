@@ -107,6 +107,7 @@ class MainMenu: NSMenu {
         menu.addItem(NSMenuItem.separator())
 
         menu.addItem(withTitle: tr("macMenuEditTunnel"), action: #selector(TunnelDetailTableViewController.handleEditTunnelAction), keyEquivalent:"e")
+        menu.addItem(withTitle: tr("macMenuConnectionDetails"), action: #selector(TunnelDetailTableViewController.handleShowDiagnosticsAction), keyEquivalent:"i")
         menu.addItem(withTitle: tr("macMenuDeleteSelected"), action: #selector(TunnelsListTableViewController.handleRemoveTunnelAction), keyEquivalent: "")
 
         return menu

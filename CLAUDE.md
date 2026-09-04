@@ -121,7 +121,7 @@ Failover groups allow ordered lists of tunnel configurations with automatic fail
 - Failover groups are `NETunnelProviderManager` instances; each member's wg-quick config is a keychain item, and `providerConfiguration` holds only persistent references (`FailoverConfigRefs`) plus names/settings — never plaintext configs
 - `ConnectionHealthMonitor` runs in the Network Extension, polling tx/rx bytes to detect unhealthy connections
 - `WireGuardAdapter.update()` hot-swaps the entire tunnel config (keys, peers, endpoint) without tearing down the VPN
-- IPC message type 0 = UAPI config, type 1 = failover state + runtime stats
+- IPC message type 0 = UAPI config, type 1 = failover state + runtime stats, type 4 = TiT stats, type 5 = full connection details (see below)
 - `TunnelsManager` maintains separate `tunnels` and `failoverGroupTunnels` arrays
 
 ### Background Probes & Hot Spare
@@ -131,6 +131,26 @@ See `DESIGN-background-probes-and-hot-spares.md` for full documentation.
 - **Hot spare** (`hotSpare: true`, opt-in): Continuously running background probe for the next failover target. On failover, `promoteProbe()` swaps the null tun for the real utun fd inside the running device, preserving the existing Noise session — zero handshake delay.
 - **`swappableTunDevice`** (Go): Wraps inner `tun.Device` with `atomic.Value` for lock-free reads. Only used for failover groups, not regular tunnels. Per-packet overhead is effectively zero (~1-2ns atomic load).
 - **Fallback chain**: If probe start fails → legacy disruptive probe. If promotion fails → `adapter.update()` (re-handshake).
+
+## Connection Details View
+
+A "nerd view" reachable from every detail screen (tunnel, failover group, tunnel-in-tunnel): iOS pushes
+`ConnectionDiagnosticsTableViewController`, macOS presents `ConnectionDiagnosticsViewController` as a sheet
+(also `Tunnel > Connection Details…`, ⌘I). Both share `ConnectionDiagnosticsModel`, which turns the IPC
+type 5 payload into key/value sections and a plain-text report (share sheet on iOS, Copy on macOS).
+
+### Key Files
+- `Sources/WireGuardNetworkExtension/PacketTunnelProvider.swift` — `buildDiagnostics()` assembles the type 5 payload
+- `Sources/WireGuardNetworkExtension/NetworkDiagnostics.swift` + `.c/.h` — `getifaddrs` interface dump, kernel routing table via `sysctl(PF_ROUTE, NET_RT_DUMP)`, interface MTU, process info
+- `Sources/WireGuardKit/WireGuardAdapter.swift` — `getDiagnostics()`: adapter state, utun name, last applied `NEPacketTunnelNetworkSettings`, current `NWPath`, endpoint resolution
+- `Sources/WireGuardKit/UapiRuntimeSnapshot.swift` — parses a UAPI dump into per-peer JSON with secrets removed
+- `Sources/WireGuardApp/UI/ConnectionDiagnosticsModel.swift` — section builder shared by both platforms
+- `Sources/WireGuardApp/Tunnel/TunnelsManager+Diagnostics.swift` — `getConnectionDiagnostics(for:)` IPC call
+
+### Notes
+- The routing table dump mirrors `struct rt_msghdr` because the iOS SDK does not ship `<net/route.h>`; the mirror is `_Static_assert`-checked against the real header on macOS.
+- The payload never includes private or preshared keys; raw UAPI dumps are passed through `ConnectionHealthMonitor.redactSecrets`.
+- Throughput is derived app-side from consecutive polls, so the first sample shows "Sampling…".
 
 ### Debug Testing
 Build with `FAILOVER_TESTING` flag (`fastlane ios device_failover`) to get Force Failover/Failback buttons in the detail view. All debug code is `#if FAILOVER_TESTING` gated.

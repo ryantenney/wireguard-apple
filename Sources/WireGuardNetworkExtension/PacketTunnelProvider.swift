@@ -30,6 +30,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// Index of the currently active configuration within failoverConfigs.
     private var activeConfigIndex: Int = 0
 
+    /// Failover settings decoded from providerConfiguration (defaults if absent).
+    private var failoverSettings = FailoverSettings()
+
     // MARK: - Widget Stats Writer
 
     /// Timer that periodically writes traffic stats to shared UserDefaults for the widget.
@@ -290,9 +293,231 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(try? JSONSerialization.data(withJSONObject: state))
             }
 
+        case 5:
+            // Connection details: everything the app needs for the stats/debug view
+            buildDiagnostics { diagnostics in
+                completionHandler(try? JSONSerialization.data(withJSONObject: diagnostics))
+            }
+
         default:
             completionHandler(nil)
         }
+    }
+
+    // MARK: - Connection Diagnostics
+
+    /// Assemble the connection details payload (IPC message type 5). Gathers adapter
+    /// state, live UAPI stats, health monitor internals, failover/TiT configuration,
+    /// session history for this run, host interfaces, the routing table, and process
+    /// info into a single JSON-serializable dictionary.
+    private func buildDiagnostics(completionHandler: @escaping ([String: Any]) -> Void) {
+        let isTunnelInTunnel = titOuterConfig != nil && titInnerConfig != nil
+
+        var diagnostics: [String: Any] = [
+            "generatedAt": Date().timeIntervalSince1970,
+            "mode": isTunnelInTunnel ? "tunnelInTunnel" : (failoverConfigs.count > 1 ? "failover" : "single"),
+            "activationReason": startupOptionsWasNil ? "onDemand" : "manual",
+            "process": NetworkDiagnostics.processInfo(),
+            "interfaces": NetworkDiagnostics.interfaceAddresses()
+        ]
+        if let connectedSince = tunnelConnectedSince {
+            diagnostics["connectedSince"] = connectedSince.timeIntervalSince1970
+        }
+        if let routes = NetworkDiagnostics.routingTable() {
+            diagnostics["routes"] = routes
+        }
+        if let session = sessionDiagnostics() {
+            diagnostics["session"] = session
+        }
+        if !failoverConfigs.isEmpty {
+            diagnostics["failover"] = failoverDiagnostics()
+        }
+        if isTunnelInTunnel {
+            diagnostics["tunnelInTunnel"] = tunnelInTunnelDiagnostics()
+        }
+
+        // The remaining pieces are asynchronous; merge them on a private queue.
+        let mergeQueue = DispatchQueue(label: "PacketTunnelProvider.Diagnostics")
+        let group = DispatchGroup()
+
+        group.enter()
+        adapter.getDiagnostics { info in
+            mergeQueue.async {
+                for (key, value) in info {
+                    diagnostics[key] = value
+                }
+                if let interfaceName = info["interfaceName"] as? String,
+                   let mtu = NetworkDiagnostics.interfaceMTU(named: interfaceName) {
+                    diagnostics["interfaceMTU"] = mtu
+                }
+                group.leave()
+            }
+        }
+
+        if isTunnelInTunnel {
+            group.enter()
+            adapter.getTiTRuntimeConfigurations { innerConfig, outerConfig in
+                mergeQueue.async {
+                    if let innerConfig = innerConfig {
+                        diagnostics["innerRuntime"] = UapiRuntimeSnapshot.parse(innerConfig)
+                        diagnostics["innerUapi"] = ConnectionHealthMonitor.redactSecrets(from: innerConfig)
+                    }
+                    if let outerConfig = outerConfig {
+                        diagnostics["outerRuntime"] = UapiRuntimeSnapshot.parse(outerConfig)
+                        diagnostics["outerUapi"] = ConnectionHealthMonitor.redactSecrets(from: outerConfig)
+                    }
+                    group.leave()
+                }
+            }
+        } else {
+            group.enter()
+            adapter.getRuntimeConfiguration { configString in
+                mergeQueue.async {
+                    if let configString = configString {
+                        diagnostics["runtime"] = UapiRuntimeSnapshot.parse(configString)
+                        diagnostics["uapi"] = ConnectionHealthMonitor.redactSecrets(from: configString)
+                    }
+                    group.leave()
+                }
+            }
+        }
+
+        if let monitor = adapter.healthMonitor {
+            group.enter()
+            monitor.getStateSnapshot { snapshot in
+                mergeQueue.async {
+                    diagnostics["healthMonitor"] = snapshot
+                    group.leave()
+                }
+            }
+        }
+
+        group.notify(queue: mergeQueue) {
+            completionHandler(diagnostics)
+        }
+    }
+
+    private func sessionDiagnostics() -> [String: Any]? {
+        return sessionQueue.sync { () -> [String: Any]? in
+            guard let session = self.currentSession else { return nil }
+            var info: [String: Any] = [
+                "id": session.id.uuidString,
+                "tunnelName": session.tunnelName,
+                "startedAt": session.startedAt.timeIntervalSince1970,
+                "activationReason": session.activationReason.rawValue,
+                "rxBytes": session.rxBytes,
+                "txBytes": session.txBytes
+            ]
+            if let initialActiveConfigName = session.initialActiveConfigName {
+                info["initialActiveConfigName"] = initialActiveConfigName
+            }
+            info["failoverEvents"] = session.failoverEvents.map { event -> [String: Any] in
+                var entry: [String: Any] = [
+                    "kind": event.kind.rawValue,
+                    "timestamp": event.timestamp.timeIntervalSince1970
+                ]
+                if let fromConfigName = event.fromConfigName {
+                    entry["from"] = fromConfigName
+                }
+                if let toConfigName = event.toConfigName {
+                    entry["to"] = toConfigName
+                }
+                if let duration = event.txWithoutRxDuration {
+                    entry["txWithoutRxDuration"] = duration
+                }
+                return entry
+            }
+            return info
+        }
+    }
+
+    private func failoverDiagnostics() -> [String: Any] {
+        var info: [String: Any] = [
+            "configNames": failoverConfigNames,
+            "activeIndex": activeConfigIndex,
+            "totalConfigs": failoverConfigs.count,
+            "settings": Self.describe(failoverSettings)
+        ]
+        if failoverConfigNames.indices.contains(activeConfigIndex) {
+            info["activeConfig"] = failoverConfigNames[activeConfigIndex]
+        }
+        info["configs"] = failoverConfigs.enumerated().map { index, config -> [String: Any] in
+            var entry: [String: Any] = [
+                "index": index,
+                "name": config.name ?? (failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"),
+                "publicKey": config.interface.privateKey.publicKey.base64Key,
+                "addresses": config.interface.addresses.map { $0.stringRepresentation },
+                "endpoints": config.peers.compactMap { $0.endpoint?.stringRepresentation },
+                "peerCount": config.peers.count
+            ]
+            if let keepalive = config.peers.compactMap({ $0.persistentKeepAlive }).first {
+                entry["persistentKeepalive"] = Int(keepalive)
+            }
+            if let mtu = config.interface.mtu {
+                entry["mtu"] = Int(mtu)
+            }
+            return entry
+        }
+        return info
+    }
+
+    private func tunnelInTunnelDiagnostics() -> [String: Any] {
+        var info: [String: Any] = [:]
+        if let outer = titOuterConfig {
+            info["outer"] = Self.describe(outer)
+        }
+        if let inner = titInnerConfig {
+            info["inner"] = Self.describe(inner)
+        }
+        return info
+    }
+
+    private static func describe(_ config: TunnelConfiguration) -> [String: Any] {
+        var info: [String: Any] = [
+            "publicKey": config.interface.privateKey.publicKey.base64Key,
+            "addresses": config.interface.addresses.map { $0.stringRepresentation },
+            "dns": config.interface.dns.map { $0.stringRepresentation },
+            "dnsSearch": config.interface.dnsSearch,
+            "peers": config.peers.map { peer -> [String: Any] in
+                var entry: [String: Any] = [
+                    "publicKey": peer.publicKey.base64Key,
+                    "allowedIPs": peer.allowedIPs.map { $0.stringRepresentation },
+                    "presharedKey": peer.preSharedKey != nil
+                ]
+                if let endpoint = peer.endpoint {
+                    entry["endpoint"] = endpoint.stringRepresentation
+                }
+                if let keepalive = peer.persistentKeepAlive {
+                    entry["persistentKeepalive"] = Int(keepalive)
+                }
+                return entry
+            }
+        ]
+        if let name = config.name {
+            info["name"] = name
+        }
+        if let mtu = config.interface.mtu {
+            info["mtu"] = Int(mtu)
+        }
+        if let listenPort = config.interface.listenPort {
+            info["listenPort"] = Int(listenPort)
+        }
+        return info
+    }
+
+    private static func describe(_ settings: FailoverSettings) -> [String: Any] {
+        var info: [String: Any] = [
+            "trafficTimeout": settings.trafficTimeout,
+            "healthCheckInterval": settings.healthCheckInterval,
+            "failbackProbeInterval": settings.failbackProbeInterval,
+            "autoFailback": settings.autoFailback,
+            "useBackgroundProbes": settings.useBackgroundProbes,
+            "hotSpare": settings.hotSpare
+        ]
+        if let override = settings.persistentKeepaliveOverride {
+            info["persistentKeepaliveOverride"] = Int(override)
+        }
+        return info
     }
 
     // MARK: - Widget Stats Writer
@@ -561,6 +786,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         var keepaliveOverride: UInt16?
         if let settingsData = providerConfig?["FailoverSettings"] as? Data,
            let settings = try? JSONDecoder().decode(FailoverSettings.self, from: settingsData) {
+            failoverSettings = settings
             keepaliveOverride = settings.persistentKeepaliveOverride
         }
 

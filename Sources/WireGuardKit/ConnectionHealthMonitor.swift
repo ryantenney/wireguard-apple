@@ -974,6 +974,22 @@ public class ConnectionHealthMonitor {
     public func getStateSnapshot(completionHandler: @escaping ([String: Any]) -> Void) {
         workQueue.async {
             var state = [String: Any]()
+            // Monitor internals surfaced for the connection details view. These keys are
+            // additive; the failover detail views only read the ones below.
+            state["monitorRunning"] = self.isRunning
+            state["monitorActiveIndex"] = self.activeIndex
+            state["monitorLastTxBytes"] = self.lastTxBytes
+            state["monitorLastRxBytes"] = self.lastRxBytes
+            state["minimumHoldTime"] = self.minimumHoldTime
+            state["maxCyclesBeforeCooldown"] = self.maxCyclesBeforeCooldown
+            state["cooldownDuration"] = self.cooldownDuration
+            state["failbackTimerActive"] = self.failbackTimer != nil
+            if let handle = self.failbackProbeHandle {
+                state["failbackProbeHandle"] = Int(handle)
+            }
+            if let handle = self.hotSpareHandle {
+                state["hotSpareHandle"] = Int(handle)
+            }
             if self.consecutiveCycles > 0 {
                 state["consecutiveCycles"] = self.consecutiveCycles
             }

@@ -12,6 +12,7 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
         case activeConnection
         case settings
         case onDemand
+        case diagnostics
         #if FAILOVER_TESTING
         case debug
         #endif
@@ -121,7 +122,7 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseTableViewController
         if tunnel.status == .active && !visibleActiveConnectionFields.isEmpty {
             s.append(.activeConnection)
         }
-        s.append(contentsOf: [.settings, .onDemand])
+        s.append(contentsOf: [.settings, .onDemand, .diagnostics])
         #if FAILOVER_TESTING
         if tunnel.status == .active {
             s.append(.debug)
@@ -273,6 +274,7 @@ extension FailoverGroupDetailTableViewController {
         case .activeConnection: return visibleActiveConnectionFields.count
         case .settings: return SettingsField.allCases.count
         case .onDemand: return onDemandViewModel.isWiFiInterfaceEnabled ? 2 : 1
+        case .diagnostics: return 1
         #if FAILOVER_TESTING
         case .debug: return 2
         #endif
@@ -287,6 +289,7 @@ extension FailoverGroupDetailTableViewController {
         case .activeConnection: return "Active Connection"
         case .settings: return "Failover Settings"
         case .onDemand: return tr("tunnelSectionTitleOnDemand")
+        case .diagnostics: return nil
         #if FAILOVER_TESTING
         case .debug: return "Debug"
         #endif
@@ -306,6 +309,8 @@ extension FailoverGroupDetailTableViewController {
             return settingsCell(for: tableView, at: indexPath)
         case .onDemand:
             return onDemandCell(for: tableView, at: indexPath)
+        case .diagnostics:
+            return diagnosticsCell(for: tableView, at: indexPath)
         #if FAILOVER_TESTING
         case .debug:
             return debugCell(for: tableView, at: indexPath)
@@ -466,6 +471,9 @@ extension FailoverGroupDetailTableViewController {
            case .ssid = GroupDetailBaseTableViewController.onDemandFields[indexPath.row] {
             return indexPath
         }
+        if case .diagnostics = sections[indexPath.section] {
+            return indexPath
+        }
         return nil
     }
 
@@ -473,6 +481,8 @@ extension FailoverGroupDetailTableViewController {
         if case .onDemand = sections[indexPath.section],
            case .ssid = GroupDetailBaseTableViewController.onDemandFields[indexPath.row] {
             handleSSIDRowSelection()
+        } else if case .diagnostics = sections[indexPath.section] {
+            showConnectionDiagnostics()
         }
         tableView.deselectRow(at: indexPath, animated: true)
     }

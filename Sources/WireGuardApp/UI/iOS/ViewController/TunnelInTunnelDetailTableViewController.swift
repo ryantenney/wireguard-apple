@@ -17,6 +17,7 @@ class TunnelInTunnelDetailTableViewController: GroupDetailBaseTableViewControlle
         case outerStats
         case innerStats
         case onDemand
+        case diagnostics
         case delete
     }
 
@@ -57,7 +58,7 @@ class TunnelInTunnelDetailTableViewController: GroupDetailBaseTableViewControlle
         var s: [Section] = [.status, .tunnels]
         if tunnel.status == .active && !visibleOuterStatFields.isEmpty { s.append(.outerStats) }
         if tunnel.status == .active && !visibleInnerStatFields.isEmpty { s.append(.innerStats) }
-        s.append(contentsOf: [.onDemand, .delete])
+        s.append(contentsOf: [.onDemand, .diagnostics, .delete])
         sections = s
     }
 
@@ -183,6 +184,7 @@ extension TunnelInTunnelDetailTableViewController {
         case .outerStats: return visibleOuterStatFields.count
         case .innerStats: return visibleInnerStatFields.count
         case .onDemand: return onDemandViewModel.isWiFiInterfaceEnabled ? 2 : 1
+        case .diagnostics: return 1
         case .delete: return 1
         }
     }
@@ -194,6 +196,7 @@ extension TunnelInTunnelDetailTableViewController {
         case .outerStats: return "Outer Tunnel (\(outerTunnelName))"
         case .innerStats: return "Inner Tunnel (\(innerTunnelName))"
         case .onDemand: return tr("tunnelSectionTitleOnDemand")
+        case .diagnostics: return nil
         case .delete: return nil
         }
     }
@@ -210,6 +213,8 @@ extension TunnelInTunnelDetailTableViewController {
             return statCell(for: tableView, field: visibleInnerStatFields[indexPath.row], prefix: "inner")
         case .onDemand:
             return onDemandCell(for: tableView, at: indexPath)
+        case .diagnostics:
+            return diagnosticsCell(for: tableView, at: indexPath)
         case .delete:
             return deleteCell(for: tableView, at: indexPath, title: "Delete Tunnel-in-Tunnel Group",
                               message: "Are you sure you want to delete '\(tunnel.name)'? This won't delete the individual tunnels.") { [weak self] in
@@ -251,6 +256,9 @@ extension TunnelInTunnelDetailTableViewController {
            case .ssid = GroupDetailBaseTableViewController.onDemandFields[indexPath.row] {
             return indexPath
         }
+        if case .diagnostics = sections[indexPath.section] {
+            return indexPath
+        }
         return nil
     }
 
@@ -258,6 +266,8 @@ extension TunnelInTunnelDetailTableViewController {
         if case .onDemand = sections[indexPath.section],
            case .ssid = GroupDetailBaseTableViewController.onDemandFields[indexPath.row] {
             handleSSIDRowSelection()
+        } else if case .diagnostics = sections[indexPath.section] {
+            showConnectionDiagnostics()
         }
         tableView.deselectRow(at: indexPath, animated: true)
     }

@@ -95,6 +95,10 @@ public class WireGuardAdapter {
     /// `docs/probe-routing-bypass.md`.
     private var excludedEndpoints: [Endpoint] = []
 
+    /// The most recent `NEPacketTunnelNetworkSettings` handed to the system. Kept only
+    /// so the connection details view can show what was actually applied.
+    private var lastAppliedNetworkSettings: NEPacketTunnelNetworkSettings?
+
     /// Tunnel device file descriptor.
     private var tunnelFileDescriptor: Int32? {
         var ctlInfo = ctl_info()
@@ -385,6 +389,7 @@ public class WireGuardAdapter {
             self.networkMonitor = nil
             self.titOuterSettingsGenerator = nil
             self.titOuterIfaceIP = nil
+            self.lastAppliedNetworkSettings = nil
             self.stopAllProbes()
 
             self.state = .stopped
@@ -470,6 +475,171 @@ public class WireGuardAdapter {
                 break
             }
         }
+    }
+
+    // MARK: - Diagnostics
+
+    /// Snapshot of the adapter's view of the world for the connection details view:
+    /// state, utun name, backend version, applied network settings, current network
+    /// path, and endpoint resolution results. Keys are JSON-serializable.
+    public func getDiagnostics(completionHandler: @escaping ([String: Any]) -> Void) {
+        workQueue.async {
+            var info: [String: Any] = [
+                "backendVersion": WireGuardAdapter.backendVersion,
+                "probeCount": self.probeHandles.count,
+                "probeHandles": self.probeHandles.keys.sorted().map { Int($0) }
+            ]
+            if let interfaceName = self.interfaceName {
+                info["interfaceName"] = interfaceName
+            }
+
+            let settingsGenerator: PacketTunnelSettingsGenerator?
+            switch self.state {
+            case .stopped:
+                info["adapterState"] = "stopped"
+                settingsGenerator = nil
+            case .started(let handle, let generator):
+                info["adapterState"] = "started"
+                info["tunnelHandle"] = Int(handle)
+                settingsGenerator = generator
+            case .temporaryShutdown(let generator):
+                info["adapterState"] = "temporaryShutdown"
+                settingsGenerator = generator
+            case .startedTiT(let handle, let generator):
+                info["adapterState"] = "startedTiT"
+                info["tunnelHandle"] = Int(handle)
+                settingsGenerator = generator
+            case .temporaryShutdownTiT(let generator, _, _):
+                info["adapterState"] = "temporaryShutdownTiT"
+                settingsGenerator = generator
+            }
+
+            if let generator = settingsGenerator {
+                info["endpoints"] = Self.endpointDiagnostics(for: generator)
+                info["excludedEndpoints"] = generator.excludedEndpoints.map { $0.stringRepresentation }
+                info["configuredMTU"] = generator.tunnelConfiguration.interface.mtu.map { Int($0) } ?? 0
+            }
+            if let outerGenerator = self.titOuterSettingsGenerator {
+                info["outerEndpoints"] = Self.endpointDiagnostics(for: outerGenerator)
+            }
+            if let outerIfaceIP = self.titOuterIfaceIP {
+                info["titOuterInterfaceIP"] = outerIfaceIP
+            }
+            info["configuredExcludedEndpoints"] = self.excludedEndpoints.map { $0.stringRepresentation }
+
+            if let networkSettings = self.lastAppliedNetworkSettings {
+                info["networkSettings"] = Self.networkSettingsDiagnostics(networkSettings)
+            }
+            if let path = self.networkMonitor?.currentPath {
+                info["networkPath"] = Self.networkPathDiagnostics(path)
+            }
+
+            completionHandler(info)
+        }
+    }
+
+    private static func endpointDiagnostics(for generator: PacketTunnelSettingsGenerator) -> [[String: Any]] {
+        return zip(generator.tunnelConfiguration.peers, generator.resolvedEndpoints).map { peer, resolved in
+            var entry: [String: Any] = ["publicKey": peer.publicKey.base64Key]
+            if let configured = peer.endpoint {
+                entry["configured"] = configured.stringRepresentation
+            }
+            if let resolved = resolved {
+                entry["resolved"] = resolved.stringRepresentation
+            }
+            return entry
+        }
+    }
+
+    private static func networkSettingsDiagnostics(_ settings: NEPacketTunnelNetworkSettings) -> [String: Any] {
+        var info: [String: Any] = ["tunnelRemoteAddress": settings.tunnelRemoteAddress]
+        if let mtu = settings.mtu {
+            info["mtu"] = mtu.intValue
+        }
+        if let overhead = settings.tunnelOverheadBytes {
+            info["tunnelOverheadBytes"] = overhead.intValue
+        }
+        if let dns = settings.dnsSettings {
+            info["dnsServers"] = dns.servers
+            info["dnsSearchDomains"] = dns.searchDomains ?? []
+            info["dnsMatchDomains"] = dns.matchDomains ?? []
+            info["dnsMatchDomainsNoSearch"] = dns.matchDomainsNoSearch
+        }
+        if let ipv4 = settings.ipv4Settings {
+            info["ipv4Addresses"] = zip(ipv4.addresses, ipv4.subnetMasks).map { "\($0)/\(Self.prefixLength(fromIPv4Mask: $1))" }
+            info["ipv4IncludedRoutes"] = (ipv4.includedRoutes ?? []).map(Self.describe)
+            info["ipv4ExcludedRoutes"] = (ipv4.excludedRoutes ?? []).map(Self.describe)
+        }
+        if let ipv6 = settings.ipv6Settings {
+            info["ipv6Addresses"] = zip(ipv6.addresses, ipv6.networkPrefixLengths).map { "\($0)/\($1.intValue)" }
+            info["ipv6IncludedRoutes"] = (ipv6.includedRoutes ?? []).map(Self.describe)
+            info["ipv6ExcludedRoutes"] = (ipv6.excludedRoutes ?? []).map(Self.describe)
+        }
+        return info
+    }
+
+    private static func describe(_ route: NEIPv4Route) -> String {
+        var text = "\(route.destinationAddress)/\(prefixLength(fromIPv4Mask: route.destinationSubnetMask))"
+        if let gateway = route.gatewayAddress {
+            text += " via \(gateway)"
+        }
+        return text
+    }
+
+    private static func describe(_ route: NEIPv6Route) -> String {
+        var text = "\(route.destinationAddress)/\(route.destinationNetworkPrefixLength.intValue)"
+        if let gateway = route.gatewayAddress {
+            text += " via \(gateway)"
+        }
+        return text
+    }
+
+    private static func prefixLength(fromIPv4Mask mask: String) -> Int {
+        return mask.split(separator: ".").compactMap { UInt8($0) }.reduce(0) { $0 + $1.nonzeroBitCount }
+    }
+
+    private static func networkPathDiagnostics(_ path: Network.NWPath) -> [String: Any] {
+        var info: [String: Any] = [
+            "isExpensive": path.isExpensive,
+            "isConstrained": path.isConstrained,
+            "supportsIPv4": path.supportsIPv4,
+            "supportsIPv6": path.supportsIPv6,
+            "supportsDNS": path.supportsDNS
+        ]
+        switch path.status {
+        case .satisfied:
+            info["status"] = "satisfied"
+        case .unsatisfied:
+            info["status"] = "unsatisfied"
+            info["unsatisfiedReason"] = String(describing: path.unsatisfiedReason)
+        case .requiresConnection:
+            info["status"] = "requiresConnection"
+        @unknown default:
+            info["status"] = "unknown"
+        }
+        info["interfaces"] = path.availableInterfaces.map { interface -> [String: Any] in
+            return ["name": interface.name, "type": Self.describe(interface.type), "index": interface.index]
+        }
+        info["gateways"] = path.gateways.map(Self.describe)
+        return info
+    }
+
+    private static func describe(_ type: NWInterface.InterfaceType) -> String {
+        switch type {
+        case .wifi: return "wifi"
+        case .cellular: return "cellular"
+        case .wiredEthernet: return "wiredEthernet"
+        case .loopback: return "loopback"
+        case .other: return "other"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private static func describe(_ endpoint: NWEndpoint) -> String {
+        if case .hostPort(let host, _) = endpoint {
+            return "\(host)"
+        }
+        return String(describing: endpoint)
     }
 
     // MARK: - Background Probe methods
@@ -660,6 +830,8 @@ public class WireGuardAdapter {
     private func setNetworkSettings(_ networkSettings: NEPacketTunnelNetworkSettings) throws {
         var systemError: Error?
         let condition = NSCondition()
+
+        self.lastAppliedNetworkSettings = networkSettings
 
         // Activate the condition
         condition.lock()

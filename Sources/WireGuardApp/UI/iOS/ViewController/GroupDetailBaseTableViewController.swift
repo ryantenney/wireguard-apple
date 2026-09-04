@@ -256,6 +256,20 @@ class GroupDetailBaseTableViewController: UITableViewController {
         return cell
     }
 
+    // MARK: - Connection Details
+
+    func diagnosticsCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell: ChevronCell = tableView.dequeueReusableCell(for: indexPath)
+        cell.message = "Connection Details"
+        cell.detailMessage = ""
+        return cell
+    }
+
+    func showConnectionDiagnostics() {
+        let diagnosticsVC = ConnectionDiagnosticsTableViewController(tunnelsManager: tunnelsManager, tunnel: tunnel)
+        navigationController?.pushViewController(diagnosticsVC, animated: true)
+    }
+
     // MARK: - On-Demand SSID Navigation
 
     func handleSSIDRowSelection() {

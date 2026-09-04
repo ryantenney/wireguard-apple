@@ -73,8 +73,14 @@ From the OS perspective, the VPN stays "connected" — it briefly enters "reasse
 | `1` | App → Extension | Get failover state + stats | JSON with activeConfig, tx/rx bytes, handshake time, health monitor state |
 | `2` | App → Extension | Force failover (debug only) | `{"success": true/false}` |
 | `3` | App → Extension | Force failback (debug only) | `{"success": true/false}` |
+| `4` | App → Extension | Get tunnel-in-tunnel stats | JSON with inner/outer tx/rx bytes and handshake times |
+| `5` | App → Extension | Get connection details | JSON with adapter state, applied network settings, network path, per-peer UAPI stats, health monitor internals, failover/TiT config, session events, host interfaces, routing table, process info |
 
 Message types 2 and 3 are only compiled when `FAILOVER_TESTING` is set.
+
+Message type 5 backs the "Connection Details" view (`ConnectionDiagnosticsModel` in the app,
+`PacketTunnelProvider.buildDiagnostics` in the extension). It is a superset of types 1 and 4
+and is only polled while that view is on screen (every 2 s).
 
 ## Approaches Considered and Rejected
 

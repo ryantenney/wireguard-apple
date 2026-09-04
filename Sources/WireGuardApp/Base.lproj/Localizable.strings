@@ -443,6 +443,9 @@
 // Mac detail/edit view fields
 
 "macFieldKey (%@)" = "%@:";
+"macButtonConnectionDetails" = "Details…";
+"macToolTipConnectionDetails" = "Show live connection, network and routing details";
+"macMenuConnectionDetails" = "Connection Details…";
 "macFieldOnDemand" = "On-Demand:";
 "macFieldOnDemandSSIDs" = "SSIDs:";
 

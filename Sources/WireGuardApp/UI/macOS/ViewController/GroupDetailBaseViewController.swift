@@ -26,6 +26,15 @@ class GroupDetailBaseViewController: NSViewController {
         return button
     }()
 
+    let detailsButton: NSButton = {
+        let button = NSButton()
+        button.title = tr("macButtonConnectionDetails")
+        button.setButtonType(.momentaryPushIn)
+        button.bezelStyle = .rounded
+        button.toolTip = tr("macToolTipConnectionDetails")
+        return button
+    }()
+
     let box: NSBox = {
         let box = NSBox()
         box.titlePosition = .noTitle
@@ -38,6 +47,7 @@ class GroupDetailBaseViewController: NSViewController {
     var onDemandViewModel: ActivateOnDemandViewModel
 
     var statusObservationToken: AnyObject?
+    private var diagnosticsVC: ConnectionDiagnosticsViewController?
 
     init(tunnelsManager: TunnelsManager, tunnel: TunnelContainer) {
         self.tunnelsManager = tunnelsManager
@@ -92,6 +102,9 @@ class GroupDetailBaseViewController: NSViewController {
         editButton.target = self
         editButton.action = #selector(handleEditAction)
 
+        detailsButton.target = self
+        detailsButton.action = #selector(handleShowDiagnosticsAction)
+
         let clipView = NSClipView()
         clipView.documentView = tableView
 
@@ -107,9 +120,11 @@ class GroupDetailBaseViewController: NSViewController {
         containerView.addSubview(box)
         containerView.addSubview(scrollView)
         containerView.addSubview(editButton)
+        containerView.addSubview(detailsButton)
         box.translatesAutoresizingMaskIntoConstraints = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         editButton.translatesAutoresizingMaskIntoConstraints = false
+        detailsButton.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: scrollView.topAnchor),
@@ -121,7 +136,9 @@ class GroupDetailBaseViewController: NSViewController {
             scrollView.bottomAnchor.constraint(equalTo: bottomControlsContainer.topAnchor),
             bottomControlsContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
             editButton.trailingAnchor.constraint(equalTo: bottomControlsContainer.trailingAnchor),
-            bottomControlsContainer.bottomAnchor.constraint(equalTo: editButton.bottomAnchor, constant: 0)
+            bottomControlsContainer.bottomAnchor.constraint(equalTo: editButton.bottomAnchor, constant: 0),
+            detailsButton.leadingAnchor.constraint(equalTo: bottomControlsContainer.leadingAnchor),
+            bottomControlsContainer.bottomAnchor.constraint(equalTo: detailsButton.bottomAnchor, constant: 0)
         ])
 
         NSLayoutConstraint.activate([
@@ -150,7 +167,22 @@ class GroupDetailBaseViewController: NSViewController {
     override func viewWillDisappear() {
         super.viewWillDisappear()
         dismissEditSheet()
+        if let diagnosticsVC = diagnosticsVC {
+            dismiss(diagnosticsVC)
+            self.diagnosticsVC = nil
+        }
         stopPolling()
+    }
+
+    // MARK: - Connection Details
+
+    @objc func handleShowDiagnosticsAction() {
+        if let diagnosticsVC = diagnosticsVC {
+            dismiss(diagnosticsVC)
+        }
+        let diagnosticsVC = ConnectionDiagnosticsViewController(tunnelsManager: tunnelsManager, tunnel: tunnel)
+        presentAsSheet(diagnosticsVC)
+        self.diagnosticsVC = diagnosticsVC
     }
 
     /// Subclasses override to dismiss their specific edit VC.

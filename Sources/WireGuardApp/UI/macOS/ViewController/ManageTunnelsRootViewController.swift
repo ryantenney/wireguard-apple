@@ -152,6 +152,11 @@ extension ManageTunnelsRootViewController {
              #selector(TunnelsListTableViewController.handleExportTunnelsAction),
              #selector(TunnelsListTableViewController.handleRemoveTunnelAction):
             return tunnelsListVC
+        case #selector(TunnelDetailTableViewController.handleShowDiagnosticsAction):
+            // The same selector name is shared by the group detail controllers.
+            if let tunnelDetailVC = tunnelDetailVC { return tunnelDetailVC }
+            if let failoverGroupDetailVC = failoverGroupDetailVC { return failoverGroupDetailVC }
+            return titGroupDetailVC
         case #selector(TunnelDetailTableViewController.handleToggleActiveStatusAction),
              #selector(TunnelDetailTableViewController.handleEditTunnelAction):
             return tunnelDetailVC

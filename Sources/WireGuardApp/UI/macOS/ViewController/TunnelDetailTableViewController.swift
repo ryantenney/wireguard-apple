@@ -70,6 +70,15 @@ class TunnelDetailTableViewController: NSViewController {
         return button
     }()
 
+    let detailsButton: NSButton = {
+        let button = NSButton()
+        button.title = tr("macButtonConnectionDetails")
+        button.setButtonType(.momentaryPushIn)
+        button.bezelStyle = .rounded
+        button.toolTip = tr("macToolTipConnectionDetails")
+        return button
+    }()
+
     let box: NSBox = {
         let box = NSBox()
         box.titlePosition = .noTitle
@@ -94,6 +103,7 @@ class TunnelDetailTableViewController: NSViewController {
 
     private var statusObservationToken: AnyObject?
     private var tunnelEditVC: TunnelEditViewController?
+    private var diagnosticsVC: ConnectionDiagnosticsViewController?
     private var reloadRuntimeConfigurationTimer: Timer?
     private var discoveredIP: String?
 
@@ -133,6 +143,9 @@ class TunnelDetailTableViewController: NSViewController {
         editButton.target = self
         editButton.action = #selector(handleEditTunnelAction)
 
+        detailsButton.target = self
+        detailsButton.action = #selector(handleShowDiagnosticsAction)
+
         let clipView = NSClipView()
         clipView.documentView = tableView
 
@@ -148,9 +161,11 @@ class TunnelDetailTableViewController: NSViewController {
         containerView.addSubview(box)
         containerView.addSubview(scrollView)
         containerView.addSubview(editButton)
+        containerView.addSubview(detailsButton)
         box.translatesAutoresizingMaskIntoConstraints = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         editButton.translatesAutoresizingMaskIntoConstraints = false
+        detailsButton.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: scrollView.topAnchor),
@@ -162,7 +177,9 @@ class TunnelDetailTableViewController: NSViewController {
             scrollView.bottomAnchor.constraint(equalTo: bottomControlsContainer.topAnchor),
             bottomControlsContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
             editButton.trailingAnchor.constraint(equalTo: bottomControlsContainer.trailingAnchor),
-            bottomControlsContainer.bottomAnchor.constraint(equalTo: editButton.bottomAnchor, constant: 0)
+            bottomControlsContainer.bottomAnchor.constraint(equalTo: editButton.bottomAnchor, constant: 0),
+            detailsButton.leadingAnchor.constraint(equalTo: bottomControlsContainer.leadingAnchor),
+            bottomControlsContainer.bottomAnchor.constraint(equalTo: detailsButton.bottomAnchor, constant: 0)
         ])
 
         NSLayoutConstraint.activate([
@@ -226,6 +243,15 @@ class TunnelDetailTableViewController: NSViewController {
         }
     }
 
+    @objc func handleShowDiagnosticsAction() {
+        if let diagnosticsVC = diagnosticsVC {
+            dismiss(diagnosticsVC)
+        }
+        let diagnosticsVC = ConnectionDiagnosticsViewController(tunnelsManager: tunnelsManager, tunnel: tunnel)
+        presentAsSheet(diagnosticsVC)
+        self.diagnosticsVC = diagnosticsVC
+    }
+
     @objc func handleToggleActiveStatusAction() {
         if tunnel.hasOnDemandRules {
             let turnOn = !tunnel.isActivateOnDemandEnabled
@@ -253,6 +279,10 @@ class TunnelDetailTableViewController: NSViewController {
         super.viewWillDisappear()
         if let tunnelEditVC = tunnelEditVC {
             dismiss(tunnelEditVC)
+        }
+        if let diagnosticsVC = diagnosticsVC {
+            dismiss(diagnosticsVC)
+            self.diagnosticsVC = nil
         }
         stopUpdatingRuntimeConfiguration()
     }

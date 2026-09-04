@@ -11,6 +11,7 @@ class TunnelDetailTableViewController: UITableViewController {
         case interface
         case peer(index: Int, peer: TunnelViewModel.PeerData)
         case onDemand
+        case diagnostics
         case delete
     }
 
@@ -102,6 +103,7 @@ class TunnelDetailTableViewController: UITableViewController {
             sections.append(.peer(index: index, peer: peer))
         }
         sections.append(.onDemand)
+        sections.append(.diagnostics)
         sections.append(.delete)
     }
 
@@ -317,6 +319,8 @@ extension TunnelDetailTableViewController {
             return peerFieldIsVisible[peerIndex].filter { $0 }.count
         case .onDemand:
             return onDemandViewModel.isWiFiInterfaceEnabled ? 2 : 1
+        case .diagnostics:
+            return 1
         case .delete:
             return 1
         }
@@ -334,6 +338,8 @@ extension TunnelDetailTableViewController {
             return tr("tunnelSectionTitlePeer")
         case .onDemand:
             return tr("tunnelSectionTitleOnDemand")
+        case .diagnostics:
+            return nil
         case .delete:
             return nil
         }
@@ -351,6 +357,8 @@ extension TunnelDetailTableViewController {
             return peerCell(for: tableView, at: indexPath, with: peer, peerIndex: index)
         case .onDemand:
             return onDemandCell(for: tableView, at: indexPath)
+        case .diagnostics:
+            return diagnosticsCell(for: tableView, at: indexPath)
         case .delete:
             return deleteConfigurationCell(for: tableView, at: indexPath)
         }
@@ -501,6 +509,13 @@ extension TunnelDetailTableViewController {
         }
     }
 
+    private func diagnosticsCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
+        let cell: ChevronCell = tableView.dequeueReusableCell(for: indexPath)
+        cell.message = "Connection Details"
+        cell.detailMessage = ""
+        return cell
+    }
+
     private func deleteConfigurationCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
         cell.buttonText = tr("deleteTunnelButtonTitle")
@@ -530,6 +545,9 @@ extension TunnelDetailTableViewController {
             case .ssid = TunnelDetailTableViewController.onDemandFields[indexPath.row] {
             return indexPath
         }
+        if case .diagnostics = sections[indexPath.section] {
+            return indexPath
+        }
         return nil
     }
 
@@ -538,6 +556,9 @@ extension TunnelDetailTableViewController {
             case .ssid = TunnelDetailTableViewController.onDemandFields[indexPath.row] {
             let ssidDetailVC = SSIDOptionDetailTableViewController(title: onDemandViewModel.ssidOption.localizedUIString, ssids: onDemandViewModel.selectedSSIDs)
             navigationController?.pushViewController(ssidDetailVC, animated: true)
+        } else if case .diagnostics = sections[indexPath.section] {
+            let diagnosticsVC = ConnectionDiagnosticsTableViewController(tunnelsManager: tunnelsManager, tunnel: tunnel)
+            navigationController?.pushViewController(diagnosticsVC, animated: true)
         }
         tableView.deselectRow(at: indexPath, animated: true)
     }
