@@ -1,13 +1,15 @@
 name: Build
 
 # Full Xcode builds of both apps on a macOS runner, with code signing disabled.
-# Runs on pushes and pull requests to main, and on demand for any branch via
-# workflow_dispatch (Actions tab, or the GitHub API), which is how Claude Code
-# on the web gets a real compiler for a working branch.
+# Runs on pushes to main and to claude/** working branches, on pull requests to
+# main, and on demand for any branch via workflow_dispatch. The claude/** push
+# trigger is how Claude Code on the web gets a real compiler for its branch.
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'claude/**'
     paths-ignore:
       - 'website/**'
       - '**.md'
