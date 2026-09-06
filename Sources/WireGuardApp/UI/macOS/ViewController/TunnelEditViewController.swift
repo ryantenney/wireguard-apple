@@ -60,6 +60,15 @@ class TunnelEditViewController: NSViewController {
         return checkbox
     }()
 
+    let excludeLocalNetworkCheckbox: NSButton = {
+        let checkbox = NSButton()
+        checkbox.title = tr("tunnelInterfaceExcludeLocalNetwork")
+        checkbox.setButtonType(.switch)
+        checkbox.state = .off
+        checkbox.toolTip = tr("tunnelSectionFooterBypass")
+        return checkbox
+    }()
+
     let discardButton: NSButton = {
         let button = NSButton()
         button.title = tr("macEditDiscard")
@@ -87,6 +96,7 @@ class TunnelEditViewController: NSViewController {
     var privateKeyObservationToken: AnyObject?
     var hasErrorObservationToken: AnyObject?
     var singlePeerAllowedIPsObservationToken: AnyObject?
+    var excludeLocalNetworkObservationToken: AnyObject?
 
     var dnsServersAddedToAllowedIPs: String?
 
@@ -135,6 +145,10 @@ class TunnelEditViewController: NSViewController {
         singlePeerAllowedIPsObservationToken = textView.observe(\.singlePeerAllowedIPs) { [weak self] textView, _ in
             self?.updateExcludePrivateIPsVisibility(singlePeerAllowedIPs: textView.singlePeerAllowedIPs)
         }
+        excludeLocalNetworkCheckbox.state = textView.excludeLocalNetwork ? .on : .off
+        excludeLocalNetworkObservationToken = textView.observe(\.excludeLocalNetwork) { [weak excludeLocalNetworkCheckbox] textView, _ in
+            excludeLocalNetworkCheckbox?.state = textView.excludeLocalNetwork ? .on : .off
+        }
     }
 
     override func loadView() {
@@ -151,6 +165,9 @@ class TunnelEditViewController: NSViewController {
         excludePrivateIPsCheckbox.target = self
         excludePrivateIPsCheckbox.action = #selector(excludePrivateIPsCheckboxToggled(sender:))
 
+        excludeLocalNetworkCheckbox.target = self
+        excludeLocalNetworkCheckbox.action = #selector(excludeLocalNetworkCheckboxToggled(sender:))
+
         onDemandControlsRow.onDemandViewModel = onDemandViewModel
 
         let margin: CGFloat = 20
@@ -164,6 +181,7 @@ class TunnelEditViewController: NSViewController {
         let buttonRowStackView = NSStackView()
         buttonRowStackView.setViews([discardButton, saveButton], in: .trailing)
         buttonRowStackView.addView(excludePrivateIPsCheckbox, in: .leading)
+        buttonRowStackView.addView(excludeLocalNetworkCheckbox, in: .leading)
         buttonRowStackView.orientation = .horizontal
         buttonRowStackView.spacing = internalSpacing
 
@@ -274,6 +292,16 @@ class TunnelEditViewController: NSViewController {
         }
         excludePrivateIPsCheckbox.isHidden = !shouldAllowExcludePrivateIPsControl
         excludePrivateIPsCheckbox.state = excludePrivateIPsValue ? .on : .off
+    }
+
+    @objc func excludeLocalNetworkCheckboxToggled(sender: AnyObject?) {
+        guard let checkbox = sender as? NSButton else { return }
+        guard let tunnelConfiguration = try? TunnelConfiguration(fromWgQuickConfig: textView.string, called: nameRow.value) else {
+            checkbox.state = textView.excludeLocalNetwork ? .on : .off
+            return
+        }
+        tunnelConfiguration.interface.excludeLocalNetwork = checkbox.state == .on
+        textView.setConfText(tunnelConfiguration.asWgQuickConfig())
     }
 
     @objc func excludePrivateIPsCheckboxToggled(sender: AnyObject?) {

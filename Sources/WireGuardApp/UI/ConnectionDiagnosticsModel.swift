@@ -363,6 +363,15 @@ final class ConnectionDiagnosticsModel {
             rows.append(DiagnosticsRow(key: "Exclude", value: route))
         }
 
+        let excludedIPs = Self.strings(diagnostics["excludedIPs"])
+        if !excludedIPs.isEmpty {
+            rows.append(DiagnosticsRow(key: "Excluded IPs", value: excludedIPs.joined(separator: ", ")))
+        }
+        if Self.bool(diagnostics["excludeLocalNetwork"]) == true {
+            let localRoutes = Self.strings(diagnostics["localNetworkRoutes"])
+            let interface = Self.string(diagnostics["localNetworkInterface"]).map { " via \($0)" } ?? ""
+            rows.append(DiagnosticsRow(key: "Local Network Bypass", value: localRoutes.isEmpty ? "On (no local network found)" : localRoutes.joined(separator: ", ") + interface))
+        }
         let siblingExclusions = Self.strings(diagnostics["excludedEndpoints"])
         if !siblingExclusions.isEmpty {
             rows.append(DiagnosticsRow(key: "Sibling Bypass", value: siblingExclusions.joined(separator: ", ")))

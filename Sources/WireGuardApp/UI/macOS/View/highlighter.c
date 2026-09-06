@@ -312,6 +312,14 @@ static bool is_valid_endpoint(string_span_t s)
 	return false;
 }
 
+static bool is_valid_bool(string_span_t s)
+{
+	return is_caseless_same(s, "true") || is_caseless_same(s, "false") ||
+	       is_caseless_same(s, "yes") || is_caseless_same(s, "no") ||
+	       is_caseless_same(s, "on") || is_caseless_same(s, "off") ||
+	       is_same(s, "1") || is_same(s, "0");
+}
+
 static bool is_valid_network(string_span_t s)
 {
 	for (size_t i = 0; i < s.len; ++i) {
@@ -344,6 +352,8 @@ enum field {
 	Address,
 	DNS,
 	MTU,
+	ExcludedIPs,
+	ExcludeLocalNetwork,
 #ifndef MOBILE_WGQUICK_SUBSET
 	FwMark,
 	Table,
@@ -378,6 +388,8 @@ static enum field get_field(string_span_t s)
 	check_enum(Address);
 	check_enum(DNS);
 	check_enum(MTU);
+	check_enum(ExcludedIPs);
+	check_enum(ExcludeLocalNetwork);
 	check_enum(PublicKey);
 	check_enum(PresharedKey);
 	check_enum(AllowedIPs);
@@ -454,7 +466,8 @@ static void highlight_multivalue_value(struct highlight_span_array *ret, const s
 			append_highlight_span(ret, parent.s, s, HighlightError);
 		break;
 	case Address:
-	case AllowedIPs: {
+	case AllowedIPs:
+	case ExcludedIPs: {
 		size_t slash;
 
 		if (!is_valid_network(s)) {
@@ -561,9 +574,13 @@ static void highlight_value(struct highlight_span_array *ret, const string_span_
 		append_highlight_span(ret, parent.s, (string_span_t){ s.s + colon + 1, s.len - colon - 1 }, HighlightPort);
 		break;
 	}
+	case ExcludeLocalNetwork:
+		append_highlight_span(ret, parent.s, s, is_valid_bool(s) ? HighlightBool : HighlightError);
+		break;
 	case Address:
 	case DNS:
 	case AllowedIPs:
+	case ExcludedIPs:
 		highlight_multivalue(ret, parent, s, section);
 		break;
 	default:

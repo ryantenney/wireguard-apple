@@ -11,6 +11,12 @@ public struct InterfaceConfiguration {
     public var mtu: UInt16?
     public var dns = [DNSServer]()
     public var dnsSearch = [String]()
+    /// Destinations that bypass the tunnel. Installed as system excluded routes while the
+    /// tunnel is up; AllowedIPs are left untouched. (`ExcludedIPs` in wg-quick text.)
+    public var excludedIPs = [IPAddressRange]()
+    /// Also bypass the network the active physical interface is directly connected to, and
+    /// its gateway, recomputed on every network change. (`ExcludeLocalNetwork` in wg-quick text.)
+    public var excludeLocalNetwork = false
 
     public init(privateKey: PrivateKey) {
         self.privateKey = privateKey
@@ -27,6 +33,8 @@ extension InterfaceConfiguration: Equatable {
             lhs.listenPort == rhs.listenPort &&
             lhs.mtu == rhs.mtu &&
             lhs.dns == rhs.dns &&
-            lhs.dnsSearch == rhs.dnsSearch
+            lhs.dnsSearch == rhs.dnsSearch &&
+            Set(lhs.excludedIPs) == Set(rhs.excludedIPs) &&
+            lhs.excludeLocalNetwork == rhs.excludeLocalNetwork
     }
 }

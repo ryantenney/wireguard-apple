@@ -76,6 +76,8 @@ extension TunnelConfiguration {
         interfaceConfiguration?.dns = base?.interface.dns ?? []
         interfaceConfiguration?.dnsSearch = base?.interface.dnsSearch ?? []
         interfaceConfiguration?.mtu = base?.interface.mtu
+        interfaceConfiguration?.excludedIPs = base?.interface.excludedIPs ?? []
+        interfaceConfiguration?.excludeLocalNetwork = base?.interface.excludeLocalNetwork ?? false
 
         if let interfaceConfiguration = interfaceConfiguration {
             self.init(name: base?.name, interface: interfaceConfiguration, peers: peerConfigurations)

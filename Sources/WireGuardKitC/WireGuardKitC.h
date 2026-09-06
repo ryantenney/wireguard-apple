@@ -4,6 +4,7 @@
 
 #include "key.h"
 #include "x25519.h"
+#include "NetworkDiagnostics.h"
 #include <sys/types.h>
 
 /* From <sys/kern_control.h> */

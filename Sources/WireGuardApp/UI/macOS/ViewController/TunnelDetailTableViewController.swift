@@ -38,7 +38,7 @@ class TunnelDetailTableViewController: NSViewController {
 
     static let interfaceFields: [TunnelViewModel.InterfaceField] = [
         .name, .status, .publicKey, .addresses,
-        .listenPort, .mtu, .dns, .toggleStatus
+        .listenPort, .mtu, .dns, .excludedIPs, .excludeLocalNetwork, .toggleStatus
     ]
 
     static let peerFields: [TunnelViewModel.PeerField] = [
@@ -437,7 +437,7 @@ extension TunnelDetailTableViewController: NSTableViewDelegate {
                 let cell: KeyValueRow = tableView.dequeueReusableCell()
                 let localizedKeyString = modelRow.isTitleRow() ? modelRow.localizedSectionKeyString() : field.localizedUIString
                 cell.key = tr(format: "macFieldKey (%@)", localizedKeyString)
-                cell.value = tunnelViewModel.interfaceData[field]
+                cell.value = field == .excludeLocalNetwork ? tr("tunnelInterfaceExcludeLocalNetworkEnabled") : tunnelViewModel.interfaceData[field]
                 cell.isKeyInBold = modelRow.isTitleRow()
                 return cell
             }

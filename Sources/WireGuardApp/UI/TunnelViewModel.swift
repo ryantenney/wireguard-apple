@@ -14,6 +14,8 @@ class TunnelViewModel {
         case listenPort
         case mtu
         case dns
+        case excludedIPs
+        case excludeLocalNetwork
         case status
         case toggleStatus
 
@@ -27,6 +29,8 @@ class TunnelViewModel {
             case .listenPort: return tr("tunnelInterfaceListenPort")
             case .mtu: return tr("tunnelInterfaceMTU")
             case .dns: return tr("tunnelInterfaceDNS")
+            case .excludedIPs: return tr("tunnelInterfaceExcludedIPs")
+            case .excludeLocalNetwork: return tr("tunnelInterfaceExcludeLocalNetwork")
             case .status: return tr("tunnelInterfaceStatus")
             case .toggleStatus: return ""
             }
@@ -70,6 +74,9 @@ class TunnelViewModel {
     ]
 
     static let keyLengthInBase64 = 44
+
+    /// Scratchpad value used for the `excludeLocalNetwork` switch (any other value means off).
+    static let excludeLocalNetworkOnValue = "true"
 
     struct Changes {
         enum FieldChange: Equatable {
@@ -144,6 +151,12 @@ class TunnelViewModel {
                 dns.append(contentsOf: config.dnsSearch)
                 scratchpad[.dns] = dns.joined(separator: ", ")
             }
+            if !config.excludedIPs.isEmpty {
+                scratchpad[.excludedIPs] = config.excludedIPs.map { $0.stringRepresentation }.joined(separator: ", ")
+            }
+            if config.excludeLocalNetwork {
+                scratchpad[.excludeLocalNetwork] = TunnelViewModel.excludeLocalNetworkOnValue
+            }
             return scratchpad
         }
 
@@ -207,6 +220,19 @@ class TunnelViewModel {
                 config.dns = dnsServers
                 config.dnsSearch = dnsSearch
             }
+            if let excludedIPsString = scratchpad[.excludedIPs] {
+                var excludedIPs = [IPAddressRange]()
+                for rangeString in excludedIPsString.splitToArray(trimmingCharacters: .whitespacesAndNewlines) {
+                    if let range = IPAddressRange(from: rangeString) {
+                        excludedIPs.append(range)
+                    } else {
+                        fieldsWithError.insert(.excludedIPs)
+                        errorMessages.append(tr("alertInvalidInterfaceMessageExcludedIPsInvalid"))
+                    }
+                }
+                config.excludedIPs = excludedIPs
+            }
+            config.excludeLocalNetwork = scratchpad[.excludeLocalNetwork] == TunnelViewModel.excludeLocalNetworkOnValue
 
             guard errorMessages.isEmpty else { return .error(errorMessages.first!) }
 

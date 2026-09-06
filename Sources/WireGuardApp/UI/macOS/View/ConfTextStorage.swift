@@ -14,6 +14,8 @@ class ConfTextStorage: NSTextStorage {
 
     private let backingStore: NSMutableAttributedString
     private(set) var hasError = false
+    /// Value of the interface's `ExcludeLocalNetwork` key as last parsed (false when absent).
+    private(set) var excludeLocalNetworkValue = false
     private(set) var privateKeyString: String?
 
     private(set) var hasOnePeer = false
@@ -98,9 +100,11 @@ class ConfTextStorage: NSTextStorage {
         enum FieldType: String {
             case dns
             case allowedips
+            case excludelocalnetwork
         }
         var fieldType: FieldType?
         resetLastPeer()
+        excludeLocalNetworkValue = false
         while spans.pointee.type != HighlightEnd {
             let span = spans.pointee
             var substring = String(string.substring(higlightSpan: span)).lowercased()
@@ -118,6 +122,8 @@ class ConfTextStorage: NSTextStorage {
                 }
             } else if span.type == HighlightField {
                 fieldType = FieldType(rawValue: substring)
+            } else if span.type == HighlightBool && fieldType == .excludelocalnetwork {
+                excludeLocalNetworkValue = ["true", "yes", "on", "1"].contains(substring)
             } else if span.type == HighlightIP && fieldType == .dns {
                 lastOnePeerDNSServers.append(substring)
             } else if span.type == HighlightIP && fieldType == .allowedips {

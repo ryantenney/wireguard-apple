@@ -21,6 +21,8 @@ extension TunnelConfiguration {
         case interfaceHasInvalidAddress(String)
         case interfaceHasInvalidDNS(String)
         case interfaceHasInvalidMTU(String)
+        case interfaceHasInvalidExcludedIP(String)
+        case interfaceHasInvalidExcludeLocalNetwork(String)
         case interfaceHasUnrecognizedKey(String)
         case peerHasNoPublicKey
         case peerHasInvalidPublicKey(String)
@@ -61,7 +63,7 @@ extension TunnelConfiguration {
                     let keyWithCase = trimmedLine[..<equalsIndex].trimmingCharacters(in: .whitespacesAndNewlines)
                     let key = keyWithCase.lowercased()
                     let value = trimmedLine[trimmedLine.index(equalsIndex, offsetBy: 1)...].trimmingCharacters(in: .whitespacesAndNewlines)
-                    let keysWithMultipleEntriesAllowed: Set<String> = ["address", "allowedips", "dns"]
+                    let keysWithMultipleEntriesAllowed: Set<String> = ["address", "allowedips", "dns", "excludedips"]
                     if let presentValue = attributes[key] {
                         if keysWithMultipleEntriesAllowed.contains(key) {
                             attributes[key] = presentValue + "," + value
@@ -71,7 +73,7 @@ extension TunnelConfiguration {
                     } else {
                         attributes[key] = value
                     }
-                    let interfaceSectionKeys: Set<String> = ["privatekey", "listenport", "address", "dns", "mtu"]
+                    let interfaceSectionKeys: Set<String> = ["privatekey", "listenport", "address", "dns", "mtu", "excludedips", "excludelocalnetwork"]
                     let peerSectionKeys: Set<String> = ["publickey", "presharedkey", "allowedips", "endpoint", "persistentkeepalive"]
                     if parserState == .inInterfaceSection {
                         guard interfaceSectionKeys.contains(key) else {
@@ -142,6 +144,13 @@ extension TunnelConfiguration {
         if let mtu = interface.mtu {
             output.append("MTU = \(mtu)\n")
         }
+        if !interface.excludedIPs.isEmpty {
+            let excludedString = interface.excludedIPs.map { $0.stringRepresentation }.joined(separator: ", ")
+            output.append("ExcludedIPs = \(excludedString)\n")
+        }
+        if interface.excludeLocalNetwork {
+            output.append("ExcludeLocalNetwork = true\n")
+        }
 
         for peer in peers {
             output.append("\n[Peer]\n")
@@ -207,7 +216,32 @@ extension TunnelConfiguration {
             }
             interface.mtu = mtu
         }
+        if let excludedString = attributes["excludedips"] {
+            var excluded = [IPAddressRange]()
+            for rangeString in excludedString.splitToArray(trimmingCharacters: .whitespacesAndNewlines) {
+                guard let range = IPAddressRange(from: rangeString) else {
+                    throw ParseError.interfaceHasInvalidExcludedIP(rangeString)
+                }
+                excluded.append(range)
+            }
+            interface.excludedIPs = excluded
+        }
+        if let excludeLocalNetworkString = attributes["excludelocalnetwork"] {
+            guard let value = TunnelConfiguration.parseBool(excludeLocalNetworkString) else {
+                throw ParseError.interfaceHasInvalidExcludeLocalNetwork(excludeLocalNetworkString)
+            }
+            interface.excludeLocalNetwork = value
+        }
         return interface
+    }
+
+    /// Accepts the boolean spellings wg-quick users tend to write.
+    static func parseBool(_ string: String) -> Bool? {
+        switch string.lowercased() {
+        case "true", "yes", "on", "1": return true
+        case "false", "no", "off", "0": return false
+        default: return nil
+        }
     }
 
     private static func collate(peerAttributes attributes: [String: String]) throws -> PeerConfiguration {

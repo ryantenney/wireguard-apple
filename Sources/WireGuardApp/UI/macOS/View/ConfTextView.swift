@@ -10,6 +10,7 @@ class ConfTextView: NSTextView {
     @objc dynamic var hasError = false
     @objc dynamic var privateKeyString: String?
     @objc dynamic var singlePeerAllowedIPs: [String]?
+    @objc dynamic var excludeLocalNetwork = false
 
     override var string: String {
         didSet {
@@ -66,6 +67,9 @@ class ConfTextView: NSTextView {
         let updatedSinglePeerAllowedIPs = confTextStorage.hasOnePeer && !hasSyntaxError && !hasSemanticError ? confTextStorage.lastOnePeerAllowedIPs : nil
         if singlePeerAllowedIPs != updatedSinglePeerAllowedIPs {
             singlePeerAllowedIPs = updatedSinglePeerAllowedIPs
+        }
+        if excludeLocalNetwork != confTextStorage.excludeLocalNetworkValue {
+            excludeLocalNetwork = confTextStorage.excludeLocalNetworkValue
         }
     }
 

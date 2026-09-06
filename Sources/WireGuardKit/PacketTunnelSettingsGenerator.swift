@@ -22,11 +22,22 @@ class PacketTunnelSettingsGenerator {
     /// `.name` hosts are ignored — caller must pre-resolve. See
     /// `docs/probe-routing-bypass.md`.
     let excludedEndpoints: [Endpoint]
+    /// Directly connected networks and gateways of the active physical interface, resolved by
+    /// the adapter when the interface configuration has `excludeLocalNetwork` set. Installed as
+    /// excluded routes alongside `excludedEndpoints` and `interface.excludedIPs`.
+    let localNetworkRoutes: [IPAddressRange]
 
-    init(tunnelConfiguration: TunnelConfiguration, resolvedEndpoints: [Endpoint?], excludedEndpoints: [Endpoint] = []) {
+    init(tunnelConfiguration: TunnelConfiguration, resolvedEndpoints: [Endpoint?], excludedEndpoints: [Endpoint] = [], localNetworkRoutes: [IPAddressRange] = []) {
         self.tunnelConfiguration = tunnelConfiguration
         self.resolvedEndpoints = resolvedEndpoints
         self.excludedEndpoints = excludedEndpoints
+        self.localNetworkRoutes = localNetworkRoutes
+    }
+
+    /// A copy of this generator with different local-network routes (same resolved endpoints).
+    func replacingLocalNetworkRoutes(_ routes: [IPAddressRange]) -> PacketTunnelSettingsGenerator {
+        return PacketTunnelSettingsGenerator(tunnelConfiguration: tunnelConfiguration, resolvedEndpoints: resolvedEndpoints,
+                                             excludedEndpoints: excludedEndpoints, localNetworkRoutes: routes)
     }
 
     func endpointUapiConfiguration() -> (String, [EndpointResolutionResult?]) {
@@ -123,7 +134,7 @@ class PacketTunnelSettingsGenerator {
 
         let (ipv4Addresses, ipv6Addresses) = addresses()
         let (ipv4IncludedRoutes, ipv6IncludedRoutes) = includedRoutes()
-        let (ipv4ExcludedRoutes, ipv6ExcludedRoutes) = excludedSiblingRoutes()
+        let (ipv4ExcludedRoutes, ipv6ExcludedRoutes) = excludedRoutes()
 
         let ipv4Settings = NEIPv4Settings(addresses: ipv4Addresses.map { $0.destinationAddress }, subnetMasks: ipv4Addresses.map { $0.destinationSubnetMask })
         ipv4Settings.includedRoutes = ipv4IncludedRoutes
@@ -188,20 +199,47 @@ class PacketTunnelSettingsGenerator {
         return (ipv4IncludedRoutes, ipv6IncludedRoutes)
     }
 
-    private func excludedSiblingRoutes() -> ([NEIPv4Route], [NEIPv6Route]) {
+    /// Every route that must bypass the tunnel: sibling failover endpoints (host routes), the
+    /// user's `ExcludedIPs`, and the resolved local network. De-duplicated; the tunnel's own
+    /// addresses are never excluded.
+    private func excludedRoutes() -> ([NEIPv4Route], [NEIPv6Route]) {
         var ipv4 = [NEIPv4Route]()
         var ipv6 = [NEIPv6Route]()
+        var seen: Set<String> = []
+        let ownAddresses = Set(tunnelConfiguration.interface.addresses.map { "\($0.address)" })
+
+        func add(_ range: IPAddressRange) {
+            let network = range.network()
+            let key = network.stringRepresentation
+            guard !seen.contains(key) else { return }
+            let isHostRoute = (network.address is IPv4Address && network.networkPrefixLength == 32)
+                || (network.address is IPv6Address && network.networkPrefixLength == 128)
+            if isHostRoute && ownAddresses.contains("\(network.address)") { return }
+            seen.insert(key)
+            if network.address is IPv4Address {
+                ipv4.append(NEIPv4Route(destinationAddress: "\(network.address)", subnetMask: "\(network.subnetMask())"))
+            } else if network.address is IPv6Address {
+                ipv6.append(NEIPv6Route(destinationAddress: "\(network.address)", networkPrefixLength: NSNumber(value: network.networkPrefixLength)))
+            }
+        }
+
         for endpoint in excludedEndpoints {
             switch endpoint.host {
             case .ipv4(let address):
-                ipv4.append(NEIPv4Route(destinationAddress: "\(address)", subnetMask: "255.255.255.255"))
+                add(IPAddressRange(address: address, networkPrefixLength: 32))
             case .ipv6(let address):
-                ipv6.append(NEIPv6Route(destinationAddress: "\(address)", networkPrefixLength: NSNumber(value: 128)))
+                add(IPAddressRange(address: address, networkPrefixLength: 128))
             case .name:
                 continue
             @unknown default:
                 continue
             }
+        }
+        for range in tunnelConfiguration.interface.excludedIPs {
+            add(range)
+        }
+        for range in localNetworkRoutes {
+            add(range)
         }
         return (ipv4, ipv6)
     }

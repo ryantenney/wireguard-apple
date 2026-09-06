@@ -99,6 +99,10 @@ public class WireGuardAdapter {
     /// so the connection details view can show what was actually applied.
     private var lastAppliedNetworkSettings: NEPacketTunnelNetworkSettings?
 
+    /// Local network last resolved for `ExcludeLocalNetwork` (empty when the active config
+    /// does not use it). Compared on every path change to decide whether routes need re-applying.
+    private var localNetworkSnapshot = LocalNetworkSnapshot.empty
+
     /// Tunnel device file descriptor.
     private var tunnelFileDescriptor: Int32? {
         var ctlInfo = ctl_info()
@@ -572,6 +576,12 @@ public class WireGuardAdapter {
                 info["endpoints"] = Self.endpointDiagnostics(for: generator)
                 info["excludedEndpoints"] = generator.excludedEndpoints.map { $0.stringRepresentation }
                 info["configuredMTU"] = generator.tunnelConfiguration.interface.mtu.map { Int($0) } ?? 0
+                info["excludedIPs"] = generator.tunnelConfiguration.interface.excludedIPs.map { $0.stringRepresentation }
+                info["excludeLocalNetwork"] = generator.tunnelConfiguration.interface.excludeLocalNetwork
+                info["localNetworkRoutes"] = generator.localNetworkRoutes.map { $0.stringRepresentation }
+            }
+            if let localInterface = self.localNetworkSnapshot.interfaceName {
+                info["localNetworkInterface"] = localInterface
             }
             if let outerGenerator = self.titOuterSettingsGenerator {
                 info["outerEndpoints"] = Self.endpointDiagnostics(for: outerGenerator)
@@ -963,8 +973,69 @@ public class WireGuardAdapter {
         return PacketTunnelSettingsGenerator(
             tunnelConfiguration: tunnelConfiguration,
             resolvedEndpoints: try self.resolvePeers(for: tunnelConfiguration),
-            excludedEndpoints: self.resolveExcludedEndpoints()
+            excludedEndpoints: self.resolveExcludedEndpoints(),
+            localNetworkRoutes: self.resolveLocalNetworkRoutes(for: tunnelConfiguration, path: self.networkMonitor?.currentPath)
         )
+    }
+
+    /// Resolve the local network for configs that ask to bypass it; records the snapshot so
+    /// path changes can detect when it moves. Returns no routes otherwise.
+    private func resolveLocalNetworkRoutes(for tunnelConfiguration: TunnelConfiguration, path: Network.NWPath?) -> [IPAddressRange] {
+        guard tunnelConfiguration.interface.excludeLocalNetwork else {
+            localNetworkSnapshot = .empty
+            return []
+        }
+        let snapshot = LocalNetwork.snapshot(
+            preferredInterface: path?.availableInterfaces.first?.name,
+            tunnelInterface: interfaceName,
+            gateways: path?.gateways.map(Self.describe) ?? []
+        )
+        if snapshot != localNetworkSnapshot {
+            logHandler(.verbose, "Local network bypass: \(snapshot.interfaceName ?? "no interface") → \(snapshot.routes.map { $0.stringRepresentation }.joined(separator: ", "))")
+        }
+        localNetworkSnapshot = snapshot
+        return snapshot.routes
+    }
+
+    /// After a network path change, re-install excluded routes when the local network moved
+    /// (Wi-Fi → cellular, a different LAN). Only acts for configs with `ExcludeLocalNetwork`.
+    private func refreshLocalNetworkExclusionsIfNeeded(path: Network.NWPath) {
+        guard path.status.isSatisfiable else { return }
+        let generator: PacketTunnelSettingsGenerator
+        switch state {
+        case .started(_, let current), .startedTiT(_, let current):
+            generator = current
+        default:
+            return
+        }
+        guard generator.tunnelConfiguration.interface.excludeLocalNetwork else { return }
+
+        let snapshot = LocalNetwork.snapshot(
+            preferredInterface: path.availableInterfaces.first?.name,
+            tunnelInterface: interfaceName,
+            gateways: path.gateways.map(Self.describe)
+        )
+        guard snapshot != localNetworkSnapshot else { return }
+        logHandler(.verbose, "Local network bypass changed: \(snapshot.interfaceName ?? "no interface") → \(snapshot.routes.map { $0.stringRepresentation }.joined(separator: ", ")); re-applying routes")
+        localNetworkSnapshot = snapshot
+
+        let updated = generator.replacingLocalNetworkRoutes(snapshot.routes)
+        packetTunnelProvider?.reasserting = true
+        defer { packetTunnelProvider?.reasserting = false }
+        do {
+            try setNetworkSettings(updated.generateNetworkSettings())
+        } catch {
+            logHandler(.error, "Failed to re-apply excluded routes after network change: \(error)")
+            return
+        }
+        switch state {
+        case .started(let handle, _):
+            state = .started(handle, updated)
+        case .startedTiT(let handle, _):
+            state = .startedTiT(handle, updated)
+        default:
+            break
+        }
     }
 
     /// Resolve the stored sibling endpoints to IPs. Hostnames that fail to resolve are
@@ -1119,6 +1190,8 @@ public class WireGuardAdapter {
         #else
         #error("Unsupported")
         #endif
+
+        self.refreshLocalNetworkExclusionsIfNeeded(path: path)
     }
 }
 

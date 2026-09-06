@@ -20,6 +20,7 @@ enum highlight_type {
 	HighlightKeepalive,
 	HighlightComment,
 	HighlightDelimiter,
+	HighlightBool,
 #ifndef MOBILE_WGQUICK_SUBSET
 	HighlightTable,
 	HighlightFwMark,

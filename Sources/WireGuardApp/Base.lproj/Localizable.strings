@@ -85,6 +85,11 @@
 "tunnelInterfaceListenPort" = "Listen port";
 "tunnelInterfaceMTU" = "MTU";
 "tunnelInterfaceDNS" = "DNS servers";
+"tunnelInterfaceExcludedIPs" = "Excluded IPs";
+"tunnelInterfaceExcludeLocalNetwork" = "Exclude local network";
+"tunnelInterfaceExcludeLocalNetworkEnabled" = "On";
+"tunnelSectionTitleBypass" = "Bypass Tunnel";
+"tunnelSectionFooterBypass" = "Traffic to excluded IPs skips the tunnel. Exclude local network also skips the network you are directly connected to and its router, and follows you between networks.";
 "tunnelInterfaceStatus" = "Status";
 "tunnelDiscoveredIP" = "Public IP";
 
@@ -188,6 +193,8 @@
 "alertInvalidInterfaceMessageAddressInvalid" = "Interface addresses must be a list of comma-separated IP addresses, optionally in CIDR notation";
 "alertInvalidInterfaceMessageListenPortInvalid" = "Interface’s listen port must be between 0 and 65535, or unspecified";
 "alertInvalidInterfaceMessageMTUInvalid" = "Interface’s MTU must be between 576 and 65535, or unspecified";
+"alertInvalidInterfaceMessageExcludedIPsInvalid" = "Interface’s excluded IPs must be a list of comma-separated IP addresses, optionally in CIDR notation";
+"alertInvalidInterfaceMessageExcludeLocalNetworkInvalid" = "Interface’s ExcludeLocalNetwork must be true or false";
 "alertInvalidInterfaceMessageDNSInvalid" = "Interface’s DNS servers must be a list of comma-separated IP addresses";
 
 /* Alert title for error in the peer data */
@@ -475,6 +482,8 @@
 "macAlertMTUInvalid (%@)" = "MTU ‘%@’ is invalid.";
 
 "macAlertUnrecognizedInterfaceKey (%@)" = "Interface contains unrecognized key ‘%@’";
+"macAlertExcludedIPInvalid (%@)" = "Invalid excluded IP: ‘%@’";
+"macAlertExcludeLocalNetworkInvalid (%@)" = "Invalid ExcludeLocalNetwork value: ‘%@’";
 "macAlertInfoUnrecognizedInterfaceKey" = "Valid keys are: ‘PrivateKey’, ‘ListenPort’, ‘Address’, ‘DNS’ and ‘MTU’.";
 
 "macAlertPublicKeyInvalid" = "Public key is invalid";

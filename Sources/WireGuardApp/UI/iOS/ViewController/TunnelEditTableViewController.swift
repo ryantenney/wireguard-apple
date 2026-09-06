@@ -42,7 +42,8 @@ class TunnelEditTableViewController: UITableViewController {
     let interfaceFieldsBySection: [[TunnelViewModel.InterfaceField]] = [
         [.name],
         [.privateKey, .publicKey, .generateKeyPair],
-        [.addresses, .listenPort, .mtu, .dns]
+        [.addresses, .listenPort, .mtu, .dns],
+        [.excludedIPs, .excludeLocalNetwork]
     ]
 
     let peerFields: [TunnelViewModel.PeerField] = [
@@ -236,7 +237,10 @@ extension TunnelEditTableViewController {
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch sections[section] {
         case .interface:
-            return section == 0 ? tr("tunnelSectionTitleInterface") : nil
+            if section == 0 {
+                return tr("tunnelSectionTitleInterface")
+            }
+            return interfaceFieldsBySection[section].contains(.excludedIPs) ? tr("tunnelSectionTitleBypass") : nil
         case .peer:
             return tr("tunnelSectionTitlePeer")
         case .addPeer:
@@ -244,6 +248,13 @@ extension TunnelEditTableViewController {
         case .onDemand:
             return tr("tunnelSectionTitleOnDemand")
         }
+    }
+
+    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        if case .interface = sections[section], interfaceFieldsBySection[section].contains(.excludedIPs) {
+            return tr("tunnelSectionFooterBypass")
+        }
+        return nil
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -266,9 +277,22 @@ extension TunnelEditTableViewController {
             return generateKeyPairCell(for: tableView, at: indexPath, with: field)
         case .publicKey:
             return publicKeyCell(for: tableView, at: indexPath, with: field)
+        case .excludeLocalNetwork:
+            return excludeLocalNetworkCell(for: tableView, at: indexPath, with: field)
         default:
             return interfaceFieldKeyValueCell(for: tableView, at: indexPath, with: field)
         }
+    }
+
+    private func excludeLocalNetworkCell(for tableView: UITableView, at indexPath: IndexPath, with field: TunnelViewModel.InterfaceField) -> UITableViewCell {
+        let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+        cell.message = field.localizedUIString
+        cell.isEnabled = true
+        cell.isOn = tunnelViewModel.interfaceData[field] == TunnelViewModel.excludeLocalNetworkOnValue
+        cell.onSwitchToggled = { [weak self] isOn in
+            self?.tunnelViewModel.interfaceData[field] = isOn ? TunnelViewModel.excludeLocalNetworkOnValue : ""
+        }
+        return cell
     }
 
     private func generateKeyPairCell(for tableView: UITableView, at indexPath: IndexPath, with field: TunnelViewModel.InterfaceField) -> UITableViewCell {
@@ -312,9 +336,12 @@ extension TunnelEditTableViewController {
         case .listenPort, .mtu:
             cell.placeholderText = tr("tunnelEditPlaceholderTextAutomatic")
             cell.keyboardType = .numberPad
+        case .excludedIPs:
+            cell.placeholderText = tr("tunnelEditPlaceholderTextOptional")
+            cell.keyboardType = .numbersAndPunctuation
         case .publicKey, .generateKeyPair:
             cell.keyboardType = .default
-        case .status, .toggleStatus:
+        case .status, .toggleStatus, .excludeLocalNetwork:
             fatalError("Unexpected interface field")
         }
 

@@ -17,7 +17,8 @@ class TunnelDetailTableViewController: UITableViewController {
 
     static let interfaceFields: [TunnelViewModel.InterfaceField] = [
         .name, .publicKey, .addresses,
-        .listenPort, .mtu, .dns
+        .listenPort, .mtu, .dns,
+        .excludedIPs, .excludeLocalNetwork
     ]
 
     static let peerFields: [TunnelViewModel.PeerField] = [
@@ -465,7 +466,12 @@ extension TunnelDetailTableViewController {
         let field = visibleInterfaceFields[indexPath.row]
         let cell: KeyValueCell = tableView.dequeueReusableCell(for: indexPath)
         cell.key = field.localizedUIString
-        cell.value = tunnelViewModel.interfaceData[field]
+        if field == .excludeLocalNetwork {
+            cell.value = tr("tunnelInterfaceExcludeLocalNetworkEnabled")
+            cell.copyableGesture = false
+        } else {
+            cell.value = tunnelViewModel.interfaceData[field]
+        }
         return cell
     }
 
