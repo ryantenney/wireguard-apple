@@ -1,0 +1,105 @@
+name: Build
+
+# Full Xcode builds of both apps on a macOS runner, with code signing disabled.
+# Runs on pushes and pull requests to main, and on demand for any branch via
+# workflow_dispatch (Actions tab, or the GitHub API), which is how Claude Code
+# on the web gets a real compiler for a working branch.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'website/**'
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'website/**'
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: SwiftLint
+        run: swiftlint lint --config .swiftlint.yml --reporter github-actions-logging
+
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: iOS
+            scheme: WireGuardiOS
+            destination: generic/platform=iOS
+          - platform: macOS
+            scheme: WireGuardmacOS
+            destination: generic/platform=macOS
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: Sources/WireGuardKitGo/go.sum
+
+      - name: Install XcodeGen
+        run: brew install xcodegen xcbeautify
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Write placeholder Developer.xcconfig
+        run: |
+          cat > Sources/WireGuardApp/Config/Developer.xcconfig <<'CFG'
+          DEVELOPMENT_TEAM = ABCDE12345
+          APP_ID_IOS = com.example.wgnext
+          APP_ID_MACOS = com.example.wgnext
+          CFG
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build ${{ matrix.scheme }}
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project WireGuard.xcodeproj \
+            -scheme "${{ matrix.scheme }}" \
+            -configuration Debug \
+            -destination "${{ matrix.destination }}" \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            | tee build-${{ matrix.platform }}.log \
+            | xcbeautify --renderer github-actions
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ matrix.platform }}
+          path: build-${{ matrix.platform }}.log
+          if-no-files-found: ignore
