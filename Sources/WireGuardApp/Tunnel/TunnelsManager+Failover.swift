@@ -61,11 +61,9 @@ extension TunnelsManager {
                 continue
             }
 
-            // Update passwordReference if primary changed
-            if let primaryName = configNames.first,
-               let primaryTunnel = self.tunnel(named: primaryName),
-               let primaryProto = primaryTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-               let passwordRef = primaryProto.passwordReference {
+            // Refresh the group's own keychain copy of the primary config
+            if let primaryConfig = spec.sourceConfigString(from: self),
+               let passwordRef = Keychain.makeReference(containing: primaryConfig, called: groupTunnel.name, previouslyReferencedBy: proto.passwordReference) {
                 proto.passwordReference = passwordRef
             }
 
@@ -100,6 +98,7 @@ extension TunnelsManager {
                 if let index = self.failoverGroupTunnels.firstIndex(of: groupTunnel) {
                     self.groupListDelegate?.groupModified(kind: .failover, at: index)
                 }
+                self.applyConfigurationToRunningGroup(groupTunnel)
             }
         }
     }

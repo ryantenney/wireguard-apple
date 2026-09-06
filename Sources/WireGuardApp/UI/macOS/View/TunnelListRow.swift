@@ -34,6 +34,13 @@ class TunnelListRow: NSView {
 
     let statusImageView = NSImageView()
 
+    /// Names of the groups this tunnel belongs to, surfaced as a tooltip.
+    var groupCaption: String? {
+        didSet {
+            toolTip = groupCaption
+        }
+    }
+
     private var statusObservationToken: AnyObject?
     private var nameObservationToken: AnyObject?
     private var isOnDemandEnabledObservationToken: AnyObject?
@@ -79,6 +86,7 @@ class TunnelListRow: NSView {
     override func prepareForReuse() {
         nameLabel.stringValue = ""
         statusImageView.image = nil
+        groupCaption = nil
     }
 }
 

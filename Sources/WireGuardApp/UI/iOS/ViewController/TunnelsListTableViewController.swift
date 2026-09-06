@@ -500,6 +500,8 @@ extension TunnelsListTableViewController: UITableViewDataSource {
             if let tunnelsManager = tunnelsManager {
                 let tunnel = tunnelsManager.tunnel(at: indexPath.row)
                 cell.tunnel = tunnel
+                let groupNames = tunnelsManager.groupNames(containing: tunnel.name)
+                cell.groupCaption = groupNames.isEmpty ? nil : tr(format: "tunnelListCaptionInGroup (%@)", groupNames.joined(separator: ", "))
                 cell.onSwitchToggled = { [weak self] isOn in
                     guard let self = self, let tunnelsManager = self.tunnelsManager else { return }
                     if tunnel.hasOnDemandRules {
@@ -624,6 +626,7 @@ extension TunnelsListTableViewController: TunnelsManagerListDelegate {
     private var tunnelsSection: Int { ListSection.tunnels.rawValue }
 
     func tunnelAdded(at index: Int) {
+        wg_log(.debug, message: "Tunnel list: row inserted at \(index) ('\(tunnelsManager?.tunnel(at: index).name ?? "?")')")
         tableView.insertRows(at: [IndexPath(row: index, section: tunnelsSection)], with: .automatic)
         centeredAddButton.isHidden = (tunnelsManager?.numberOfTunnels() ?? 0 > 0)
     }
@@ -637,6 +640,7 @@ extension TunnelsListTableViewController: TunnelsManagerListDelegate {
     }
 
     func tunnelRemoved(at index: Int, tunnel: TunnelContainer) {
+        wg_log(.info, message: "Tunnel list: row removed at \(index) ('\(tunnel.name)')")
         tableView.deleteRows(at: [IndexPath(row: index, section: tunnelsSection)], with: .automatic)
         centeredAddButton.isHidden = tunnelsManager?.numberOfTunnels() ?? 0 > 0
         if detailDisplayedTunnel == tunnel, let splitViewController = splitViewController {
@@ -669,10 +673,23 @@ extension TunnelsListTableViewController: TunnelsManagerGroupListDelegate {
     func groupAdded(kind: TunnelGroupKind, at index: Int) {
         tableView.insertRows(at: [IndexPath(row: index, section: listSection(for: kind))], with: .automatic)
         centeredAddButton.isHidden = true
+        refreshGroupCaptions()
     }
 
     func groupModified(kind: TunnelGroupKind, at index: Int) {
         tableView.reloadRows(at: [IndexPath(row: index, section: listSection(for: kind))], with: .automatic)
+        refreshGroupCaptions()
+    }
+
+    /// Update the "In <group>" captions on the visible tunnel rows without reloading the rows.
+    private func refreshGroupCaptions() {
+        guard let tunnelsManager = tunnelsManager else { return }
+        for indexPath in tableView.indexPathsForVisibleRows ?? [] where indexPath.section == tunnelsSection {
+            guard let cell = tableView.cellForRow(at: indexPath) as? TunnelListCell,
+                  indexPath.row < tunnelsManager.numberOfTunnels() else { continue }
+            let groupNames = tunnelsManager.groupNames(containing: tunnelsManager.tunnel(at: indexPath.row).name)
+            cell.groupCaption = groupNames.isEmpty ? nil : tr(format: "tunnelListCaptionInGroup (%@)", groupNames.joined(separator: ", "))
+        }
     }
 
     func groupMoved(kind: TunnelGroupKind, from oldIndex: Int, to newIndex: Int) {
@@ -682,6 +699,7 @@ extension TunnelsListTableViewController: TunnelsManagerGroupListDelegate {
 
     func groupRemoved(kind: TunnelGroupKind, at index: Int, tunnel: TunnelContainer) {
         tableView.deleteRows(at: [IndexPath(row: index, section: listSection(for: kind))], with: .automatic)
+        refreshGroupCaptions()
         let hasAnyItems = (tunnelsManager?.numberOfTunnels() ?? 0) > 0
             || (tunnelsManager?.numberOfFailoverGroups() ?? 0) > 0
             || (tunnelsManager?.numberOfTiTGroups() ?? 0) > 0

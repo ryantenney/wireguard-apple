@@ -31,12 +31,39 @@ class TunnelListCell: UITableViewCell {
     }
     var onSwitchToggled: ((Bool) -> Void)?
 
+    /// Secondary line naming the failover / tunnel-in-tunnel groups this tunnel belongs to.
+    var groupCaption: String? {
+        didSet {
+            groupLabel.text = groupCaption ?? ""
+            groupLabel.isHidden = (groupCaption ?? "").isEmpty
+        }
+    }
+
     let nameLabel: UILabel = {
         let nameLabel = UILabel()
         nameLabel.font = UIFont.preferredFont(forTextStyle: .body)
         nameLabel.adjustsFontForContentSizeCategory = true
         nameLabel.numberOfLines = 0
         return nameLabel
+    }()
+
+    let groupLabel: UILabel = {
+        let label = UILabel()
+        label.text = ""
+        label.font = UIFont.preferredFont(forTextStyle: .caption1)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 1
+        label.textColor = .secondaryLabel
+        label.isHidden = true
+        return label
+    }()
+
+    private let titleStack: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.alignment = .leading
+        stack.spacing = 2
+        return stack
     }()
 
     let onDemandLabel: UILabel = {
@@ -72,16 +99,20 @@ class TunnelListCell: UITableViewCell {
 
         accessoryType = .disclosureIndicator
 
-        for subview in [statusSwitch, busyIndicator, onDemandLabel, nameLabel] {
+        titleStack.addArrangedSubview(nameLabel)
+        titleStack.addArrangedSubview(groupLabel)
+
+        for subview in [statusSwitch, busyIndicator, onDemandLabel, titleStack] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(subview)
         }
 
         nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        groupLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         onDemandLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
         let nameLabelBottomConstraint =
-            contentView.layoutMarginsGuide.bottomAnchor.constraint(equalToSystemSpacingBelow: nameLabel.bottomAnchor, multiplier: 1)
+            contentView.layoutMarginsGuide.bottomAnchor.constraint(equalToSystemSpacingBelow: titleStack.bottomAnchor, multiplier: 1)
         nameLabelBottomConstraint.priority = .defaultLow
 
         NSLayoutConstraint.activate([
@@ -90,16 +121,16 @@ class TunnelListCell: UITableViewCell {
             statusSwitch.leadingAnchor.constraint(equalToSystemSpacingAfter: busyIndicator.trailingAnchor, multiplier: 1),
             statusSwitch.leadingAnchor.constraint(equalToSystemSpacingAfter: onDemandLabel.trailingAnchor, multiplier: 1),
 
-            nameLabel.topAnchor.constraint(equalToSystemSpacingBelow: contentView.layoutMarginsGuide.topAnchor, multiplier: 1),
-            nameLabel.leadingAnchor.constraint(equalToSystemSpacingAfter: contentView.layoutMarginsGuide.leadingAnchor, multiplier: 1),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusSwitch.leadingAnchor),
+            titleStack.topAnchor.constraint(equalToSystemSpacingBelow: contentView.layoutMarginsGuide.topAnchor, multiplier: 1),
+            titleStack.leadingAnchor.constraint(equalToSystemSpacingAfter: contentView.layoutMarginsGuide.leadingAnchor, multiplier: 1),
+            titleStack.trailingAnchor.constraint(lessThanOrEqualTo: statusSwitch.leadingAnchor),
             nameLabelBottomConstraint,
 
             onDemandLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            onDemandLabel.leadingAnchor.constraint(equalToSystemSpacingAfter: nameLabel.trailingAnchor, multiplier: 1),
+            onDemandLabel.leadingAnchor.constraint(equalToSystemSpacingAfter: titleStack.trailingAnchor, multiplier: 1),
 
             busyIndicator.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            busyIndicator.leadingAnchor.constraint(greaterThanOrEqualToSystemSpacingAfter: nameLabel.trailingAnchor, multiplier: 1)
+            busyIndicator.leadingAnchor.constraint(greaterThanOrEqualToSystemSpacingAfter: titleStack.trailingAnchor, multiplier: 1)
         ])
 
         statusSwitch.addTarget(self, action: #selector(switchToggled), for: .valueChanged)
@@ -111,6 +142,7 @@ class TunnelListCell: UITableViewCell {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        groupCaption = nil
         reset(animated: false)
     }
 

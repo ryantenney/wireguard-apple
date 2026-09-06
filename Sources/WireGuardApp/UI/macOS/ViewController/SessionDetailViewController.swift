@@ -167,6 +167,11 @@ class SessionDetailViewController: NSViewController {
                                 secs)
                 case .failedBack:
                     detail = tr(format: "sessionFailoverFailedBack (%@)", event.toConfigName ?? "?")
+                case .suppressed:
+                    let secs = event.txWithoutRxDuration.map { "\(Int($0))s" } ?? "?"
+                    detail = tr(format: "sessionFailoverSuppressed (%@: %@)", event.fromConfigName ?? "?", secs)
+                case .configReloaded:
+                    detail = tr("sessionFailoverConfigReloaded")
                 }
                 rows.append(Row(key: timeFormatter.string(from: event.timestamp), value: detail, isHeader: false))
             }

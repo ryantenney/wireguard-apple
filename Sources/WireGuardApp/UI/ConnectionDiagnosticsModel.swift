@@ -717,6 +717,11 @@ final class ConnectionDiagnosticsModel {
             return "\(from) unhealthy (tx without rx for \(seconds))"
         case "failedBack":
             return "Failed back to \(to)"
+        case "suppressed":
+            let seconds = double(event["txWithoutRxDuration"]).map { "\(Int($0))s" } ?? "?"
+            return "Held on \(from): no server reachable (\(seconds) tx without rx)"
+        case "configReloaded":
+            return "Configuration reloaded in place"
         default:
             return string(event["kind"]) ?? "Event"
         }

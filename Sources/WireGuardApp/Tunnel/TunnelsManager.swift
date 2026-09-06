@@ -62,15 +62,24 @@ class TunnelsManager {
 
             var tunnelManagers = managers ?? []
             var refs: Set<Data> = []
+            var regularRefs: Set<Data> = []
             var tunnelNames: Set<String> = []
+
+            // Names of every tunnel referenced by a failover or TiT group. A member whose keychain
+            // entry fails to verify is kept (and logged) rather than removed, so a group never
+            // silently loses a connection.
+            let groupMemberNames = TunnelsManager.groupMemberNames(in: tunnelManagers)
+
+            // Pass 1: regular tunnels (migration, verification, orphan removal).
             for (index, tunnelManager) in tunnelManagers.enumerated().reversed() {
                 if let tunnelName = tunnelManager.localizedDescription {
                     tunnelNames.insert(tunnelName)
                 }
                 guard let proto = tunnelManager.protocolConfiguration as? NETunnelProviderProtocol else { continue }
-                // Failover group and TiT group managers borrow their passwordReference from the primary/outer tunnel's
-                // Keychain entry — skip the regular migration and orphan removal for them. They additionally own one
-                // keychain item per member config, all of which must be whitelisted.
+                // Failover group and TiT group managers keep their own copy of the primary/outer
+                // config in the Keychain (pass 2 below) — skip the regular migration and orphan
+                // removal for them. They additionally own one keychain item per member config,
+                // all of which must be whitelisted.
                 let isFailoverGroup = proto.providerConfiguration?["FailoverGroupId"] != nil
                 let isTiTGroup = proto.providerConfiguration?[TunnelInTunnelConfigKeys.groupId] != nil
                 if isFailoverGroup || isTiTGroup {
@@ -107,12 +116,57 @@ class TunnelsManager {
                 #else
                 #error("Unimplemented")
                 #endif
+                let name = tunnelManager.localizedDescription ?? "<unknown>"
                 if let ref = passwordRef {
                     refs.insert(ref)
+                    regularRefs.insert(ref)
+                } else if groupMemberNames.contains(name) {
+                    wg_log(.error, message: "Tunnel '\(name)' has a non-verifying keychain entry but belongs to a group; keeping it so the group stays intact")
                 } else {
-                    wg_log(.info, message: "Removing orphaned tunnel with non-verifying keychain entry: \(tunnelManager.localizedDescription ?? "<unknown>")")
+                    wg_log(.info, message: "Removing orphaned tunnel with non-verifying keychain entry: \(name)")
                     tunnelManager.removeFromPreferences { _ in }
                     tunnelManagers.remove(at: index)
+                }
+            }
+
+            // Pass 2: group managers own a private keychain copy of their primary/outer config.
+            // Older builds borrowed the member's reference; migrate those (and repair dangling
+            // ones) so editing or deleting a member can never invalidate the group.
+            for tunnelManager in tunnelManagers {
+                guard let proto = tunnelManager.protocolConfiguration as? NETunnelProviderProtocol else { continue }
+                let providerConfig = proto.providerConfiguration ?? [:]
+                let isFailoverGroup = providerConfig["FailoverGroupId"] != nil
+                let isTiTGroup = providerConfig[TunnelInTunnelConfigKeys.groupId] != nil
+                guard isFailoverGroup || isTiTGroup else { continue }
+                let name = tunnelManager.localizedDescription ?? "<unknown>"
+                let isShared = proto.passwordReference.map { regularRefs.contains($0) } ?? false
+                if let ref = proto.passwordReference, !isShared, proto.verifyConfigurationReference() {
+                    refs.insert(ref)
+                    continue
+                }
+                // Rebuild from the member config pass 1 just moved into the keychain, falling
+                // back to any plaintext left by a group whose migration has not run yet.
+                let sourceConfig: String?
+                if isFailoverGroup {
+                    sourceConfig = (providerConfig["FailoverConfigRefs"] as? [Data])?.first.flatMap { Keychain.openReference(called: $0) }
+                        ?? (providerConfig["FailoverConfigs"] as? [String])?.first
+                } else {
+                    sourceConfig = (providerConfig[TunnelInTunnelConfigKeys.outerConfigRef] as? Data).flatMap { Keychain.openReference(called: $0) }
+                        ?? providerConfig[TunnelInTunnelConfigKeys.outerConfig] as? String
+                }
+                guard let config = sourceConfig,
+                      let newRef = Keychain.makeReference(containing: config, called: name) else {
+                    wg_log(.error, message: "Group '\(name)' has no usable keychain entry and no stored config to rebuild one from")
+                    if let ref = proto.passwordReference { refs.insert(ref) }
+                    continue
+                }
+                wg_log(.info, message: "Group '\(name)': \(isShared ? "migrating shared" : "repairing") keychain reference to a group-owned entry")
+                proto.passwordReference = newRef
+                refs.insert(newRef)
+                tunnelManager.saveToPreferences { error in
+                    if let error = error {
+                        wg_log(.error, message: "Group '\(name)': failed to save migrated keychain reference: \(error)")
+                    }
                 }
             }
             Keychain.deleteReferences(except: refs)
@@ -155,17 +209,25 @@ class TunnelsManager {
                 ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?[TunnelInTunnelConfigKeys.groupId] != nil
             }
 
-            // Reconcile regular tunnels
+            // Reconcile regular tunnels. Tunnels are matched by name (names are unique); a
+            // configuration change is adopted in place rather than removing and re-adding the
+            // row, so a transient keychain read failure can never make a tunnel disappear.
             for (index, currentTunnel) in self.tunnels.enumerated().reversed() {
-                if !loadedRegular.contains(where: { $0.isEquivalentTo(currentTunnel) }) {
+                if !loadedRegular.contains(where: { $0.localizedDescription == currentTunnel.name }) {
+                    wg_log(.info, message: "Reload: tunnel '\(currentTunnel.name)' is no longer in preferences, removing it from the list")
                     self.tunnels.remove(at: index)
                     self.tunnelsListDelegate?.tunnelRemoved(at: index, tunnel: currentTunnel)
                 }
             }
             for loadedTunnelProvider in loadedRegular {
-                if let matchingTunnel = self.tunnels.first(where: { loadedTunnelProvider.isEquivalentTo($0) }) {
+                if let matchingTunnel = self.tunnels.first(where: { $0.name == loadedTunnelProvider.localizedDescription }) {
+                    let isConfigurationChanged = !loadedTunnelProvider.isEquivalentTo(matchingTunnel)
                     matchingTunnel.tunnelProvider = loadedTunnelProvider
                     matchingTunnel.refreshStatus()
+                    if isConfigurationChanged, let tunnelIndex = self.tunnels.firstIndex(of: matchingTunnel) {
+                        wg_log(.debug, message: "Reload: tunnel '\(matchingTunnel.name)' changed outside the app, refreshing it in place")
+                        self.tunnelsListDelegate?.tunnelModified(at: tunnelIndex)
+                    }
                 } else {
                     if let proto = loadedTunnelProvider.protocolConfiguration as? NETunnelProviderProtocol {
                         if proto.migrateConfigurationIfNeeded(called: loadedTunnelProvider.localizedDescription ?? "unknown") {
@@ -591,6 +653,47 @@ class TunnelsManager {
 
     func tunnel(named tunnelName: String) -> TunnelContainer? {
         return tunnels.first { $0.name == tunnelName }
+    }
+
+    // MARK: - Group Membership
+
+    /// Names of the failover / tunnel-in-tunnel groups that reference the given tunnel.
+    func groupNames(containing tunnelName: String) -> [String] {
+        var names: [String] = []
+        for group in failoverGroupTunnels {
+            let proto = group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol
+            let members = proto?.providerConfiguration?["FailoverConfigNames"] as? [String] ?? []
+            if members.contains(tunnelName) {
+                names.append(group.name)
+            }
+        }
+        for group in titGroupTunnels {
+            let config = (group.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration
+            let outerName = config?[TunnelInTunnelConfigKeys.outerName] as? String
+            let innerName = config?[TunnelInTunnelConfigKeys.innerName] as? String
+            if outerName == tunnelName || innerName == tunnelName {
+                names.append(group.name)
+            }
+        }
+        return names
+    }
+
+    /// Every tunnel name referenced by any group manager in `managers`.
+    static func groupMemberNames(in managers: [NETunnelProviderManager]) -> Set<String> {
+        var names: Set<String> = []
+        for manager in managers {
+            guard let config = (manager.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration else { continue }
+            if let members = config["FailoverConfigNames"] as? [String] {
+                names.formUnion(members)
+            }
+            if let outerName = config[TunnelInTunnelConfigKeys.outerName] as? String {
+                names.insert(outerName)
+            }
+            if let innerName = config[TunnelInTunnelConfigKeys.innerName] as? String {
+                names.insert(innerName)
+            }
+        }
+        return names
     }
 
     // MARK: - Group Accessors (unified)

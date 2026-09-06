@@ -85,6 +85,7 @@ extension ManageTunnelsRootViewController: TunnelsListTableViewControllerDelegat
         failoverGroupDetailVC = nil
         let groupTunnel = tunnelsManager.titGroup(at: index)
         let detailVC = TunnelInTunnelDetailTableViewController(tunnelsManager: tunnelsManager, tunnel: groupTunnel)
+        detailVC.memberNavigationDelegate = self
         setTunnelDetailContentVC(detailVC)
         self.titGroupDetailVC = detailVC
     }
@@ -123,6 +124,7 @@ extension ManageTunnelsRootViewController: TunnelsListTableViewControllerDelegat
         titGroupDetailVC = nil
         let groupTunnel = tunnelsManager.failoverGroup(at: index)
         let detailVC = FailoverGroupDetailTableViewController(tunnelsManager: tunnelsManager, tunnel: groupTunnel)
+        detailVC.memberNavigationDelegate = self
         setTunnelDetailContentVC(detailVC)
         self.failoverGroupDetailVC = detailVC
     }
@@ -138,6 +140,12 @@ extension ManageTunnelsRootViewController: TunnelsListTableViewControllerDelegat
         }
         setTunnelDetailContentVC(noTunnelsVC)
         self.tunnelDetailVC = nil
+    }
+}
+
+extension ManageTunnelsRootViewController: GroupDetailMemberNavigationDelegate {
+    func groupDetailRequestsTunnel(named name: String) {
+        tunnelsListVC?.selectTunnel(named: name)
     }
 }
 

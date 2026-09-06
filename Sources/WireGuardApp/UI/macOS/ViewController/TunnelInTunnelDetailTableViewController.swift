@@ -89,6 +89,11 @@ class TunnelInTunnelDetailTableViewController: GroupDetailBaseViewController {
         }
     }
 
+    override func memberTunnelName(forRow row: Int) -> String? {
+        guard tableViewModelRows.indices.contains(row), case .tunnelRow(let name, _) = tableViewModelRows[row] else { return nil }
+        return name
+    }
+
     override func startPolling() { startPollingStats() }
     override func stopPolling() { stopPollingStats() }
 
@@ -190,6 +195,7 @@ extension TunnelInTunnelDetailTableViewController: NSTableViewDelegate {
             cell.key = tr(format: "macFieldKey (%@)", name)
             cell.value = role
             cell.isKeyInBold = false
+            cell.toolTip = "Double-click to open '\(name)'"
             return cell
 
         case .statRow(let label, let value, let isHeader):

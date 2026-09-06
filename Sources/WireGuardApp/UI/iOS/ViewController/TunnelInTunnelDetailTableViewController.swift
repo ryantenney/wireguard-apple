@@ -226,16 +226,23 @@ extension TunnelInTunnelDetailTableViewController {
         }
     }
 
+    private func memberTunnelName(forRow row: Int) -> String {
+        return row == 0 ? outerTunnelName : innerTunnelName
+    }
+
     private func tunnelCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
-        let cell: KeyValueCell = tableView.dequeueReusableCell(for: indexPath)
-        if indexPath.row == 0 {
-            cell.key = outerTunnelName
-            cell.value = "Outer (Server A)"
+        let cell = UITableViewCell(style: .value1, reuseIdentifier: "TiTMemberCell")
+        let name = memberTunnelName(forRow: indexPath.row)
+        cell.textLabel?.text = name
+        cell.detailTextLabel?.text = indexPath.row == 0 ? "Outer (Server A)" : "Inner (Server B)"
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        if isMemberTunnelAvailable(named: name) {
+            cell.selectionStyle = .default
+            cell.accessoryType = .disclosureIndicator
         } else {
-            cell.key = innerTunnelName
-            cell.value = "Inner (Server B)"
+            cell.selectionStyle = .none
+            cell.accessoryType = .none
         }
-        cell.copyableGesture = false
         return cell
     }
 
@@ -259,6 +266,9 @@ extension TunnelInTunnelDetailTableViewController {
         if case .diagnostics = sections[indexPath.section] {
             return indexPath
         }
+        if case .tunnels = sections[indexPath.section], isMemberTunnelAvailable(named: memberTunnelName(forRow: indexPath.row)) {
+            return indexPath
+        }
         return nil
     }
 
@@ -268,6 +278,8 @@ extension TunnelInTunnelDetailTableViewController {
             handleSSIDRowSelection()
         } else if case .diagnostics = sections[indexPath.section] {
             showConnectionDiagnostics()
+        } else if case .tunnels = sections[indexPath.section] {
+            showMemberTunnelDetail(named: memberTunnelName(forRow: indexPath.row))
         }
         tableView.deselectRow(at: indexPath, animated: true)
     }

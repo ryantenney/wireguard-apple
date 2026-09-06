@@ -176,15 +176,20 @@ public class ConnectionHealthMonitor {
 
     // MARK: - Initialization
 
+    /// - Parameter initialActiveIndex: the configuration the adapter is already running. Used
+    ///   when the monitor is rebuilt after a live configuration reload so it continues from the
+    ///   connection that is actually up instead of assuming the primary.
     public init(
         adapter: FailoverAdapterProtocol,
         configurations: [TunnelConfiguration],
         settings: FailoverSettings,
+        initialActiveIndex: Int = 0,
         logHandler: @escaping (FailoverLogLevel, String) -> Void
     ) {
         self.adapter = adapter
         self.configurations = configurations
         self.settings = settings
+        self.activeIndex = configurations.indices.contains(initialActiveIndex) ? initialActiveIndex : 0
         self.logHandler = logHandler
     }
 

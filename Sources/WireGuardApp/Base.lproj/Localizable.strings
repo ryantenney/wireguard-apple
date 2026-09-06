@@ -297,6 +297,9 @@
 "sessionFailoverSwitched (%@: %@)" = "Switched: %@ → %@";
 "sessionFailoverUnhealthy (%@: %@)" = "Unhealthy: %@ (%@ tx without rx)";
 "sessionFailoverFailedBack (%@)" = "Failed back to %@";
+"sessionFailoverSuppressed (%@: %@)" = "Held on %@: no server reachable (%@ tx without rx)";
+"sessionFailoverConfigReloaded" = "Configuration reloaded";
+"tunnelListCaptionInGroup (%@)" = "In %@";
 
 "macMenuSessionHistory" = "Session History…";
 

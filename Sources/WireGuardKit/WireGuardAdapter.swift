@@ -319,41 +319,10 @@ public class WireGuardAdapter {
             networkMonitor.start(queue: self.workQueue)
 
             do {
-                // Apply INNER's network settings to the system (DNS, routes, MTU).
-                let innerSettingsGenerator = try self.makeSettingsGenerator(with: innerTunnelConfiguration)
-                try self.setNetworkSettings(innerSettingsGenerator.generateNetworkSettings())
-
-                // Resolve OUTER peers and build UAPI config.
-                let outerSettingsGenerator = try self.makeSettingsGenerator(with: outerTunnelConfiguration)
-                let (outerWgConfig, outerResolutionResults) = outerSettingsGenerator.uapiConfiguration()
-                self.logEndpointResolutionResults(outerResolutionResults)
-
-                // Build INNER's UAPI config (uses PipedBind, so no real endpoint resolution matters).
-                let (innerWgConfig, innerResolutionResults) = innerSettingsGenerator.uapiConfiguration()
-                self.logEndpointResolutionResults(innerResolutionResults)
-
-                // OUTER's first interface address is used as the IP source in the TiT pipe.
-                let outerIfaceIP: String
-                if let firstAddr = outerTunnelConfiguration.interface.addresses.first?.address {
-                    outerIfaceIP = "\(firstAddr)"
-                } else {
-                    outerIfaceIP = "10.200.0.1"
-                }
-
-                guard let tunnelFileDescriptor = self.tunnelFileDescriptor else {
-                    throw WireGuardAdapterError.cannotLocateTunnelFileDescriptor
-                }
-
-                let handle = wgTurnOnTiT(outerWgConfig, innerWgConfig, outerIfaceIP, tunnelFileDescriptor)
-                if handle < 0 {
-                    throw WireGuardAdapterError.startWireGuardBackend(handle)
-                }
-                #if os(iOS)
-                wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle)
-                #endif
-
-                self.titOuterSettingsGenerator = outerSettingsGenerator
-                self.titOuterIfaceIP = outerIfaceIP
+                let (handle, innerSettingsGenerator) = try self.bringUpTunnelInTunnel(
+                    outerTunnelConfiguration: outerTunnelConfiguration,
+                    innerTunnelConfiguration: innerTunnelConfiguration
+                )
                 self.state = .startedTiT(handle, innerSettingsGenerator)
                 self.networkMonitor = networkMonitor
                 completionHandler(nil)
@@ -364,6 +333,91 @@ public class WireGuardAdapter {
                 fatalError()
             }
         }
+    }
+
+    /// Replace both halves of a running tunnel-in-tunnel session with new configurations
+    /// without stopping the packet tunnel provider. The old devices are torn down and new
+    /// ones brought up; the system sees a brief "reasserting" rather than a disconnect.
+    /// On failure the adapter is left stopped and the caller should cancel the tunnel.
+    public func restartTunnelInTunnel(
+        outerTunnelConfiguration: TunnelConfiguration,
+        innerTunnelConfiguration: TunnelConfiguration,
+        completionHandler: @escaping (WireGuardAdapterError?) -> Void
+    ) {
+        workQueue.async {
+            guard case .startedTiT(let oldHandle, _) = self.state else {
+                completionHandler(.invalidState)
+                return
+            }
+
+            self.packetTunnelProvider?.reasserting = true
+            defer {
+                self.packetTunnelProvider?.reasserting = false
+            }
+
+            wgTurnOffTiT(oldHandle)
+            self.state = .stopped
+
+            do {
+                let (handle, innerSettingsGenerator) = try self.bringUpTunnelInTunnel(
+                    outerTunnelConfiguration: outerTunnelConfiguration,
+                    innerTunnelConfiguration: innerTunnelConfiguration
+                )
+                self.state = .startedTiT(handle, innerSettingsGenerator)
+                self.logHandler(.verbose, "TiT: restarted with updated configuration")
+                completionHandler(nil)
+            } catch let error as WireGuardAdapterError {
+                self.logHandler(.error, "TiT: failed to restart with updated configuration: \(error)")
+                completionHandler(error)
+            } catch {
+                fatalError()
+            }
+        }
+    }
+
+    /// Shared TiT bring-up: applies INNER's network settings, resolves both configs, and starts
+    /// the paired devices. Must be called on `workQueue`. Stores the OUTER generator and interface
+    /// IP needed for the iOS offline/online restart path.
+    private func bringUpTunnelInTunnel(
+        outerTunnelConfiguration: TunnelConfiguration,
+        innerTunnelConfiguration: TunnelConfiguration
+    ) throws -> (Int32, PacketTunnelSettingsGenerator) {
+        // Apply INNER's network settings to the system (DNS, routes, MTU).
+        let innerSettingsGenerator = try self.makeSettingsGenerator(with: innerTunnelConfiguration)
+        try self.setNetworkSettings(innerSettingsGenerator.generateNetworkSettings())
+
+        // Resolve OUTER peers and build UAPI config.
+        let outerSettingsGenerator = try self.makeSettingsGenerator(with: outerTunnelConfiguration)
+        let (outerWgConfig, outerResolutionResults) = outerSettingsGenerator.uapiConfiguration()
+        self.logEndpointResolutionResults(outerResolutionResults)
+
+        // Build INNER's UAPI config (uses PipedBind, so no real endpoint resolution matters).
+        let (innerWgConfig, innerResolutionResults) = innerSettingsGenerator.uapiConfiguration()
+        self.logEndpointResolutionResults(innerResolutionResults)
+
+        // OUTER's first interface address is used as the IP source in the TiT pipe.
+        let outerIfaceIP: String
+        if let firstAddr = outerTunnelConfiguration.interface.addresses.first?.address {
+            outerIfaceIP = "\(firstAddr)"
+        } else {
+            outerIfaceIP = "10.200.0.1"
+        }
+
+        guard let tunnelFileDescriptor = self.tunnelFileDescriptor else {
+            throw WireGuardAdapterError.cannotLocateTunnelFileDescriptor
+        }
+
+        let handle = wgTurnOnTiT(outerWgConfig, innerWgConfig, outerIfaceIP, tunnelFileDescriptor)
+        if handle < 0 {
+            throw WireGuardAdapterError.startWireGuardBackend(handle)
+        }
+        #if os(iOS)
+        wgDisableSomeRoamingForBrokenMobileSemanticsForOuterTiT(handle)
+        #endif
+
+        self.titOuterSettingsGenerator = outerSettingsGenerator
+        self.titOuterIfaceIP = outerIfaceIP
+        return (handle, innerSettingsGenerator)
     }
 
     /// Stop the tunnel.

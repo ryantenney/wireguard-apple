@@ -189,6 +189,11 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseViewController {
         self.failoverEditVC = editVC
     }
 
+    override func memberTunnelName(forRow row: Int) -> String? {
+        guard tableViewModelRows.indices.contains(row), case .tunnelRow(let name, _) = tableViewModelRows[row] else { return nil }
+        return name
+    }
+
     override func startPolling() { startPollingFailoverState() }
     override func stopPolling() { stopPollingFailoverState() }
 
@@ -391,6 +396,7 @@ extension FailoverGroupDetailTableViewController: NSTableViewDelegate {
             combined.append(nameAttr)
             cell.keyLabel.attributedStringValue = combined
             cell.value = "\(role) · \(status.label)"
+            cell.toolTip = "Double-click to open '\(name)'"
             return cell
 
         case .activeConnectionRow(let field):

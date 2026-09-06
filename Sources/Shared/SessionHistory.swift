@@ -60,6 +60,11 @@ struct FailoverEvent: Codable {
         case switched
         case failedBack
         case unhealthy
+        /// Failover was warranted by traffic but held back because no server could be reached
+        /// (the underlying link is down, not the VPN server).
+        case suppressed
+        /// The group's configuration was reloaded in place after an edit.
+        case configReloaded
     }
 
     var kind: Kind

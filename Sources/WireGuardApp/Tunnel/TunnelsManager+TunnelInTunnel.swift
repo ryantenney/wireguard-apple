@@ -62,10 +62,9 @@ extension TunnelsManager {
                 continue
             }
 
-            // Update passwordReference from outer tunnel
-            if let outerTunnel = self.tunnel(named: outerName),
-               let outerProto = outerTunnel.tunnelProvider.protocolConfiguration as? NETunnelProviderProtocol,
-               let passwordRef = outerProto.passwordReference {
+            // Refresh the group's own keychain copy of the outer config
+            if let outerConfig = spec.sourceConfigString(from: self),
+               let passwordRef = Keychain.makeReference(containing: outerConfig, called: groupTunnel.name, previouslyReferencedBy: proto.passwordReference) {
                 proto.passwordReference = passwordRef
             }
 
@@ -100,6 +99,7 @@ extension TunnelsManager {
                 if let index = self.titGroupTunnels.firstIndex(of: groupTunnel) {
                     self.groupListDelegate?.groupModified(kind: .tunnelInTunnel, at: index)
                 }
+                self.applyConfigurationToRunningGroup(groupTunnel)
             }
         }
     }

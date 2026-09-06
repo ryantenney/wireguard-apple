@@ -347,7 +347,13 @@ extension FailoverGroupDetailTableViewController {
 
         cell.detailTextLabel?.text = "\(role) · \(status.label)"
         cell.detailTextLabel?.textColor = .secondaryLabel
-        cell.selectionStyle = .none
+        if isMemberTunnelAvailable(named: name) {
+            cell.selectionStyle = .default
+            cell.accessoryType = .disclosureIndicator
+        } else {
+            cell.selectionStyle = .none
+            cell.accessoryType = .none
+        }
         return cell
     }
 
@@ -474,6 +480,9 @@ extension FailoverGroupDetailTableViewController {
         if case .diagnostics = sections[indexPath.section] {
             return indexPath
         }
+        if case .tunnels = sections[indexPath.section], isMemberTunnelAvailable(named: tunnelNames[indexPath.row]) {
+            return indexPath
+        }
         return nil
     }
 
@@ -483,6 +492,8 @@ extension FailoverGroupDetailTableViewController {
             handleSSIDRowSelection()
         } else if case .diagnostics = sections[indexPath.section] {
             showConnectionDiagnostics()
+        } else if case .tunnels = sections[indexPath.section] {
+            showMemberTunnelDetail(named: tunnelNames[indexPath.row])
         }
         tableView.deselectRow(at: indexPath, animated: true)
     }

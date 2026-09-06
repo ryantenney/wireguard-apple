@@ -4,9 +4,16 @@
 import Cocoa
 import NetworkExtension
 
+/// Lets a group detail view ask its container to navigate to one of the group's member tunnels.
+protocol GroupDetailMemberNavigationDelegate: AnyObject {
+    func groupDetailRequestsTunnel(named name: String)
+}
+
 /// Base class for macOS group detail view controllers (failover, TiT).
 /// Provides shared loadView layout, status helpers, toggle action, and polling lifecycle.
 class GroupDetailBaseViewController: NSViewController {
+
+    weak var memberNavigationDelegate: GroupDetailMemberNavigationDelegate?
 
     let tableView: NSTableView = {
         let tableView = NSTableView()
@@ -94,10 +101,23 @@ class GroupDetailBaseViewController: NSViewController {
         tableView.reloadData()
     }
 
+    /// The member tunnel shown on the given table row, if that row is a member row.
+    func memberTunnelName(forRow row: Int) -> String? {
+        return nil
+    }
+
+    @objc private func handleRowDoubleClick() {
+        let row = tableView.clickedRow
+        guard row >= 0, let name = memberTunnelName(forRow: row) else { return }
+        memberNavigationDelegate?.groupDetailRequestsTunnel(named: name)
+    }
+
     // MARK: - Layout
 
     override func loadView() {
         tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier(tableColumnIdentifier)))
+        tableView.target = self
+        tableView.doubleAction = #selector(handleRowDoubleClick)
 
         editButton.target = self
         editButton.action = #selector(handleEditAction)

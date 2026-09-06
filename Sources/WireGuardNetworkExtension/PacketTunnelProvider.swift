@@ -299,6 +299,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(try? JSONSerialization.data(withJSONObject: diagnostics))
             }
 
+        case 6:
+            // Live reload of a group's configuration after a member or the group was edited
+            guard let payload = try? JSONSerialization.jsonObject(with: messageData.dropFirst()) as? [String: Any] else {
+                completionHandler(try? JSONSerialization.data(withJSONObject: ["success": false]))
+                return
+            }
+            reloadGroupConfiguration(payload) { success in
+                completionHandler(try? JSONSerialization.data(withJSONObject: ["success": success]))
+            }
+
         default:
             completionHandler(nil)
         }
@@ -781,18 +791,26 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         let names = providerConfig?["FailoverConfigNames"] as? [String] ?? []
-
-        // Decode settings to check for persistent keepalive override
-        var keepaliveOverride: UInt16?
         if let settingsData = providerConfig?["FailoverSettings"] as? Data,
            let settings = try? JSONDecoder().decode(FailoverSettings.self, from: settingsData) {
             failoverSettings = settings
-            keepaliveOverride = settings.persistentKeepaliveOverride
         }
 
-        // Parse configs and names together so a dropped (unreadable/unparseable)
-        // member can't shift the index-to-name alignment used in failover events.
-        let parsed: [(name: String, config: TunnelConfiguration)] = configStrings.enumerated().compactMap { index, configString in
+        let parsed = Self.parseFailoverConfigs(configStrings, names: names, settings: failoverSettings)
+        failoverConfigs = parsed.map { $0.config }
+        failoverConfigNames = parsed.map { $0.name }
+
+        if let override = failoverSettings.persistentKeepaliveOverride {
+            wg_log(.info, message: "Failover: persistent keepalive override = \(override)s applied to all peers")
+        }
+    }
+
+    /// Parse packed wg-quick configs, applying the group's persistent keepalive override.
+    /// Configs and names are returned together so a dropped (unreadable/unparseable) member
+    /// can't shift the index-to-name alignment used in failover events.
+    private static func parseFailoverConfigs(_ configStrings: [String?], names: [String], settings: FailoverSettings) -> [(name: String, config: TunnelConfiguration)] {
+        let keepaliveOverride = settings.persistentKeepaliveOverride
+        return configStrings.enumerated().compactMap { index, configString in
             let name = names.indices.contains(index) ? names[index] : nil
             guard let configString = configString else { return nil }
             do {
@@ -813,11 +831,129 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 return nil
             }
         }
-        failoverConfigs = parsed.map { $0.config }
-        failoverConfigNames = parsed.map { $0.name }
+    }
 
-        if let override = keepaliveOverride {
-            wg_log(.info, message: "Failover: persistent keepalive override = \(override)s applied to all peers")
+    // MARK: - Live Configuration Reload (IPC type 6)
+
+    /// Apply an updated group configuration to the running tunnel. For failover groups the
+    /// active connection is hot-swapped via `adapter.update` only when it actually changed, and
+    /// the health monitor is rebuilt around the new config list. For tunnel-in-tunnel both
+    /// devices are restarted in place. Never tears the packet tunnel down.
+    private func reloadGroupConfiguration(_ payload: [String: Any], completionHandler: @escaping (Bool) -> Void) {
+        switch payload["kind"] as? String {
+        case "failover":
+            reloadFailoverConfiguration(payload, completionHandler: completionHandler)
+        case "tunnelInTunnel":
+            reloadTunnelInTunnelConfiguration(payload, completionHandler: completionHandler)
+        default:
+            completionHandler(false)
+        }
+    }
+
+    private func reloadFailoverConfiguration(_ payload: [String: Any], completionHandler: @escaping (Bool) -> Void) {
+        guard titOuterConfig == nil, !failoverConfigs.isEmpty,
+              let configStrings = payload["configs"] as? [String],
+              let names = payload["names"] as? [String] else {
+            completionHandler(false)
+            return
+        }
+
+        var settings = FailoverSettings()
+        if let encoded = payload["settings"] as? String,
+           let data = Data(base64Encoded: encoded),
+           let decoded = try? JSONDecoder().decode(FailoverSettings.self, from: data) {
+            settings = decoded
+        }
+
+        let parsed = Self.parseFailoverConfigs(configStrings, names: names, settings: settings)
+        guard !parsed.isEmpty else {
+            wg_log(.error, staticMessage: "Failover: reload payload contained no valid configs")
+            completionHandler(false)
+            return
+        }
+        let newConfigs = parsed.map { $0.config }
+        let newNames = parsed.map { $0.name }
+
+        // Stay on the connection that is currently up if it still exists in the new list.
+        let activeName = failoverConfigNames.indices.contains(activeConfigIndex) ? failoverConfigNames[activeConfigIndex] : nil
+        let newIndex = activeName.flatMap { newNames.firstIndex(of: $0) } ?? 0
+        let activeConfigChanged = newConfigs[newIndex] != failoverConfigs[activeConfigIndex]
+        let newSiblings = Self.failoverSiblingEndpoints(configs: newConfigs, activeIndex: newIndex)
+        let oldSiblings = Self.failoverSiblingEndpoints(configs: failoverConfigs, activeIndex: activeConfigIndex)
+        let siblingsChanged = Set(newSiblings) != Set(oldSiblings)
+
+        adapter.healthMonitor?.stop()
+        adapter.healthMonitor = nil
+
+        let finish: (Bool) -> Void = { success in
+            guard success else {
+                // Keep the old monitor semantics alive on the previous config list.
+                self.startHealthMonitor(settings: self.failoverSettings, initialActiveIndex: self.activeConfigIndex)
+                completionHandler(false)
+                return
+            }
+            self.failoverConfigs = newConfigs
+            self.failoverConfigNames = newNames
+            self.failoverSettings = settings
+            self.activeConfigIndex = newIndex
+            self.startHealthMonitor(settings: settings, initialActiveIndex: newIndex)
+            self.appendFailoverEvent(FailoverEvent(kind: .configReloaded, timestamp: Date(), fromConfigName: nil,
+                                                   toConfigName: newNames.indices.contains(newIndex) ? newNames[newIndex] : nil,
+                                                   txWithoutRxDuration: nil))
+            wg_log(.info, message: "Failover: configuration reloaded in place (\(newConfigs.count) configs, active '\(newNames.indices.contains(newIndex) ? newNames[newIndex] : "#\(newIndex)")', \(activeConfigChanged ? "active config updated" : "active config unchanged"))")
+            completionHandler(true)
+        }
+
+        if activeConfigChanged || siblingsChanged {
+            adapter.update(tunnelConfiguration: newConfigs[newIndex], excludedEndpoints: newSiblings) { (error: WireGuardAdapterError?) in
+                if let error = error {
+                    wg_log(.error, message: "Failover: live update of the active config failed: \(error)")
+                }
+                finish(error == nil)
+            }
+        } else {
+            finish(true)
+        }
+    }
+
+    private func reloadTunnelInTunnelConfiguration(_ payload: [String: Any], completionHandler: @escaping (Bool) -> Void) {
+        guard let currentOuter = titOuterConfig, let currentInner = titInnerConfig,
+              let outerString = payload["outer"] as? String, !outerString.isEmpty,
+              let innerString = payload["inner"] as? String, !innerString.isEmpty else {
+            completionHandler(false)
+            return
+        }
+        let outerName = payload["outerName"] as? String
+        let innerName = payload["innerName"] as? String
+
+        let newOuter: TunnelConfiguration
+        let newInner: TunnelConfiguration
+        do {
+            newOuter = try TunnelConfiguration(fromWgQuickConfig: outerString, called: outerName)
+            newInner = try TunnelConfiguration(fromWgQuickConfig: innerString, called: innerName)
+        } catch {
+            wg_log(.error, message: "TiT: reload payload failed to parse: \(error)")
+            completionHandler(false)
+            return
+        }
+
+        if newOuter == currentOuter && newInner == currentInner {
+            wg_log(.info, staticMessage: "TiT: reload requested but configuration is unchanged")
+            completionHandler(true)
+            return
+        }
+
+        adapter.restartTunnelInTunnel(outerTunnelConfiguration: newOuter, innerTunnelConfiguration: newInner) { error in
+            if let error = error {
+                wg_log(.error, message: "TiT: in-place restart failed (\(error)); stopping the tunnel")
+                self.cancelTunnelWithError(PacketTunnelProviderError.couldNotStartBackend)
+                completionHandler(false)
+                return
+            }
+            self.titOuterConfig = newOuter
+            self.titInnerConfig = newInner
+            self.appendFailoverEvent(FailoverEvent(kind: .configReloaded, timestamp: Date(), fromConfigName: nil, toConfigName: nil, txWithoutRxDuration: nil))
+            completionHandler(true)
         }
     }
 
@@ -839,18 +975,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     private func startHealthMonitorIfNeeded(providerConfig: [String: Any]?) {
         guard failoverConfigs.count > 1 else { return }
+        startHealthMonitor(settings: failoverSettings, initialActiveIndex: activeConfigIndex)
+    }
 
-        var settings = FailoverSettings()
-        if let settingsData = providerConfig?["FailoverSettings"] as? Data {
-            if let decoded = try? JSONDecoder().decode(FailoverSettings.self, from: settingsData) {
-                settings = decoded
-            }
-        }
+    private func startHealthMonitor(settings: FailoverSettings, initialActiveIndex: Int) {
+        guard failoverConfigs.count > 1 else { return }
 
         let monitor = ConnectionHealthMonitor(
             adapter: adapter,
             configurations: failoverConfigs,
-            settings: settings
+            settings: settings,
+            initialActiveIndex: initialActiveIndex
         ) { (logLevel: FailoverLogLevel, message: String) in
             wg_log(logLevel.osLogLevel, message: message)
         }

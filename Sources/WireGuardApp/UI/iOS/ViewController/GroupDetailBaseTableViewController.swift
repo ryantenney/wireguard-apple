@@ -256,6 +256,20 @@ class GroupDetailBaseTableViewController: UITableViewController {
         return cell
     }
 
+    // MARK: - Member Tunnels
+
+    /// Open the detail view of a member tunnel, from which it can be edited.
+    func showMemberTunnelDetail(named name: String) {
+        guard let member = tunnelsManager.tunnel(named: name) else { return }
+        let detailVC = TunnelDetailTableViewController(tunnelsManager: tunnelsManager, tunnel: member)
+        navigationController?.pushViewController(detailVC, animated: true)
+    }
+
+    /// Whether a member row should be tappable (the tunnel exists in the list).
+    func isMemberTunnelAvailable(named name: String) -> Bool {
+        return tunnelsManager.tunnel(named: name) != nil
+    }
+
     // MARK: - Connection Details
 
     func diagnosticsCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {

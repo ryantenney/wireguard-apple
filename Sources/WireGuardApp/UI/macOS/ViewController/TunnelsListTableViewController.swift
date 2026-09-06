@@ -392,6 +392,13 @@ class TunnelsListTableViewController: NSViewController {
     private func selectTunnel(at index: Int) -> Bool {
         return selectRow(at: groupCount + index)
     }
+
+    /// Select a regular tunnel by name (used to jump from a group's detail to one of its members).
+    @discardableResult
+    func selectTunnel(named name: String) -> Bool {
+        guard let tunnel = tunnelsManager.tunnel(named: name), let index = tunnelsManager.index(of: tunnel) else { return false }
+        return selectTunnel(at: index)
+    }
 }
 
 extension TunnelsListTableViewController: TunnelEditViewControllerDelegate {
@@ -568,7 +575,10 @@ extension TunnelsListTableViewController: NSTableViewDelegate {
             return cell
         } else {
             let cell: TunnelListRow = tableView.dequeueReusableCell()
-            cell.tunnel = tunnelsManager.tunnel(at: row - groupCount)
+            let tunnel = tunnelsManager.tunnel(at: row - groupCount)
+            cell.tunnel = tunnel
+            let groupNames = tunnelsManager.groupNames(containing: tunnel.name)
+            cell.groupCaption = groupNames.isEmpty ? nil : tr(format: "tunnelListCaptionInGroup (%@)", groupNames.joined(separator: ", "))
             return cell
         }
     }

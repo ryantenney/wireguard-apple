@@ -105,6 +105,11 @@ class SessionDetailViewController: UITableViewController {
                         secs)
         case .failedBack:
             detail = tr(format: "sessionFailoverFailedBack (%@)", event.toConfigName ?? "?")
+        case .suppressed:
+            let secs = event.txWithoutRxDuration.map { "\(Int($0))s" } ?? "?"
+            detail = tr(format: "sessionFailoverSuppressed (%@: %@)", event.fromConfigName ?? "?", secs)
+        case .configReloaded:
+            detail = tr("sessionFailoverConfigReloaded")
         }
         return (timestamp, detail)
     }
