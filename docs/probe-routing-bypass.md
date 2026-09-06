@@ -86,7 +86,7 @@ If a future use case surfaces where per-socket bypass actually matters — e.g.,
 
 ## Status
 
-Not yet implemented. This document precedes the change so that the limitations of Approach B are explicit before code lands.
+Implemented (commit `d26a7c2`): `PacketTunnelProvider` passes sibling endpoints to the adapter on every start, switch, and promotion, and `PacketTunnelSettingsGenerator` installs them as host `excludedRoutes`. The same `excludedRoutes()` builder now also carries the user's `ExcludedIPs` and the `ExcludeLocalNetwork` bypass (see `DESIGN-excluded-routes.md`), and the Connection Details view lists every installed exclusion under "Tunnel Routes".
 
 ## Related
 

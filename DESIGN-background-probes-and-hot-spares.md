@@ -233,8 +233,15 @@ public struct FailoverSettings: Codable {
     var autoFailback: Bool                  // default: true
     var useBackgroundProbes: Bool           // default: true — non-disruptive failback
     var hotSpare: Bool                      // default: false — opt-in hot spare mode
+    var confirmBeforeFailover: Bool         // default: true — next server must handshake first
+    var confirmationTimeout: TimeInterval   // default: 15s — for a temporary confirmation probe
+    var linkDownHoldTime: TimeInterval      // default: 300s — max hold when no server answers
+    var adaptiveSensitivity: Bool           // default: true
+    var pathChangeGrace: TimeInterval       // default: 15s
 }
 ```
+
+The same probe device doubles as the **confirmation probe**: when failover is warranted and no hot spare runs for the next config, the monitor starts a probe for it and only switches once it handshakes, promoting that probe so the handshake is not repeated. A running hot spare is consulted instead (handshake fresher than 150 s). See "Confirmation" in `DESIGN-connection-failover.md`.
 
 ## Key Files
 

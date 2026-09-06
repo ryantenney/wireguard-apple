@@ -75,8 +75,18 @@ From the OS perspective, the VPN stays "connected" — it briefly enters "reasse
 | `3` | App → Extension | Force failback (debug only) | `{"success": true/false}` |
 | `4` | App → Extension | Get tunnel-in-tunnel stats | JSON with inner/outer tx/rx bytes and handshake times |
 | `5` | App → Extension | Get connection details | JSON with adapter state, applied network settings, network path, per-peer UAPI stats, health monitor internals, failover/TiT config, session events, host interfaces, routing table, process info |
+| `6` | App → Extension | Reload group configuration in place | `{"success": true/false}` |
 
 Message types 2 and 3 are only compiled when `FAILOVER_TESTING` is set.
+
+Message type 6 carries a JSON payload after the type byte: for failover groups the packed wg-quick
+configs, names, and base64 `FailoverSettings`; for tunnel-in-tunnel the outer/inner configs and
+names. The extension keeps the connection that is currently up (matched by name), hot-swaps it via
+`adapter.update` only when its config or the sibling-endpoint set changed, and rebuilds the health
+monitor with `initialActiveIndex`. Tunnel-in-tunnel restarts both devices in place. The app sends it
+from `applyConfigurationToRunningGroup` after any member or group edit and falls back to restarting
+the group if the extension does not confirm. Delegate callbacks from a monitor that has since been
+replaced are ignored.
 
 Message type 5 backs the "Connection Details" view (`ConnectionDiagnosticsModel` in the app,
 `PacketTunnelProvider.buildDiagnostics` in the extension). It is a superset of types 1 and 4
@@ -125,6 +135,25 @@ This approach correctly handles:
 - Brief network glitches (30s grace period)
 - Active connections that go dead (detected within ~40s)
 
+Two gates run before the timer is even consulted:
+- **Path state.** The adapter forwards every `NWPathMonitor` update as `networkPathDidChange(isSatisfied:)`. While the path is unsatisfied nothing is evaluated (on iOS the backend is paused anyway; on macOS this is what stops a dead Wi-Fi from counting as a dead server). For `pathChangeGrace` seconds (default 15) after any path change, tx-without-rx is ignored so roaming blips do not accumulate.
+
+### Confirmation: Link Outage or Server Outage?
+
+Tx-without-rx says the active server is unreachable *from here*; it cannot say whether the server died or the uplink did. On a flaky link (Starlink) the latter is common, and switching servers during it only adds a handshake to the recovery. With `confirmBeforeFailover` (default on) the monitor asks the next configuration's server to vouch for the link before switching:
+
+1. If a hot spare is running for the next config, its last handshake is the witness: fresher than 150 s (keepalives re-handshake every ~2 min while the server answers) confirms a server-side outage.
+2. Otherwise a temporary confirmation probe is started for the next config (same machinery as a hot spare, null tun, real sockets). A handshake within `confirmationTimeout` (default 15 s) confirms it.
+3. Confirmed → fail over now. A confirmation probe is promoted with `promoteProbe`, so the new connection keeps the session it just established; a hot spare is promoted as before.
+4. Not confirmed → **held**. Logged once, recorded as a `.suppressed` session event, counted as a false alarm. The probe stays up and the check repeats every tick, so the switch happens the moment any server becomes reachable while the active one still is not. If traffic resumes on its own the incident is cleared. After `linkDownHoldTime` (default 300 s, 0 = never) the monitor switches anyway, in case only the current server is blocked on this network.
+5. If the probe cannot even start, the monitor switches without confirmation rather than sit still.
+
+Confirmation only costs anything during an outage; a running hot spare makes it free.
+
+### Adaptive Sensitivity
+
+With `adaptiveSensitivity` (default on) the effective traffic timeout is `trafficTimeout × min(1.5ⁿ, 4)` where `n` counts recent false alarms: held outages, and failbacks that landed within two hold times of the failover that preceded them. One false alarm is forgiven per quiet half hour. Connection Details shows the effective value and the count.
+
 ### Anti-Flap Protection
 
 | Guard | Value | Purpose |
@@ -135,14 +164,14 @@ This approach correctly handles:
 
 ### Failback Probing
 
-When on a fallback config with `autoFailback` enabled, the monitor probes the primary every `failbackProbeInterval` seconds (default 300s):
+When on a fallback config with `autoFailback` enabled, the monitor probes the primary every `failbackProbeInterval` seconds (default 300s). With `useBackgroundProbes` (default) this is a background WireGuard device that handshakes without touching traffic and is promoted in place on success (see `DESIGN-background-probes-and-hot-spares.md`). The legacy path:
 
 1. Switch to primary config via `adapter.update()`
 2. Wait up to 15 seconds for a handshake
 3. Check `last_handshake_time` — if recent enough, stay on primary
 4. Otherwise, revert to the fallback config
 
-The probe causes a brief (~15s) traffic disruption. This is an acceptable tradeoff since it means the faster primary connection might be back.
+The legacy probe causes a brief (~15s) traffic disruption.
 
 Network path changes (detected via `NWPathMonitor`) trigger an immediate probe when on a fallback, since a network change often means the primary may have recovered.
 
@@ -200,8 +229,18 @@ struct FailoverSettings: Codable, Equatable {
     var healthCheckInterval: TimeInterval = 10  // How often to poll wireguard-go
     var failbackProbeInterval: TimeInterval = 300  // How often to probe primary when on fallback
     var autoFailback: Bool = true               // Attempt to return to primary
+    var useBackgroundProbes: Bool = true        // Non-disruptive failback probes
+    var hotSpare: Bool = false                  // Keep the next config pre-handshaked
+    var persistentKeepaliveOverride: UInt16?    // Force keepalive on every peer
+    var confirmBeforeFailover: Bool = true      // Require the next server to handshake first
+    var confirmationTimeout: TimeInterval = 15  // How long a confirmation probe may take
+    var linkDownHoldTime: TimeInterval = 300    // Max hold while no server answers (0 = forever)
+    var adaptiveSensitivity: Bool = true        // Scale trafficTimeout after false alarms
+    var pathChangeGrace: TimeInterval = 15      // Ignore tx-without-rx after a path change
 }
 ```
+
+Every field decodes with its default when absent, so older stored settings and `.failovergroup.conf` files keep working; the file format gained matching `ConfirmBeforeFailover`, `ConfirmationTimeout`, `LinkDownHoldTime`, `AdaptiveSensitivity`, and `PathChangeGrace` keys.
 
 Originally this had a `handshakeTimeout` field; this was migrated to `trafficTimeout` when we switched from handshake-based to traffic-based detection. The decoder handles the legacy key transparently.
 
@@ -220,8 +259,9 @@ Both are derived from the same `NETunnelProviderManager.loadAllFromPreferences()
 Key integration points:
 - **Name uniqueness** is enforced across both arrays
 - **Active tunnel tracking** (`tunnelInOperation()`, `waitingTunnel()`) searches both
-- **Tunnel modification** triggers `refreshFailoverGroupsContaining()` — if a tunnel referenced by a group is modified or renamed, the group's provider config is rebuilt with current data
-- **Orphan cleanup** prevents Keychain entries from being deleted when they're referenced by a failover group's `passwordReference`
+- **Tunnel modification** triggers `refreshFailoverGroupsContaining()` — if a tunnel referenced by a group is modified or renamed, the group's provider config is rebuilt with current data and, when the group is running, pushed into the extension with IPC type 6 (restart fallback)
+- **Keychain ownership** — a group's `passwordReference` points at its own copy of the primary config, created at add/modify/refresh time. Groups created by older builds borrowed the primary's reference; `TunnelsManager.create` migrates them (and repairs dangling references) at launch. Orphan cleanup never removes a tunnel that a group still references
+- **List reconcile** (`reload()`) matches tunnels by name and adopts changed managers in place, so a transient keychain read failure cannot drop a member row; removals are logged
 
 ## iOS UI
 
@@ -369,12 +409,13 @@ To enable manually, add `FAILOVER_TESTING` to `SWIFT_ACTIVE_COMPILATION_CONDITIO
 |----------|----------|
 | All configs unhealthy | Cycles through all, anti-flap kicks in after 3 consecutive switches, 5-minute cooldown |
 | Rapid cycling | 60-second minimum hold time prevents ping-ponging |
-| Network goes offline entirely | `NWPathMonitor` triggers `temporaryShutdown` (existing iOS behavior). Health monitor can't poll. Resumes on recovery. |
+| Network goes offline entirely | `NWPathMonitor` triggers `temporaryShutdown` on iOS; on both platforms the monitor is told the path is unsatisfied and stops counting tx-without-rx until it recovers, then waits out `pathChangeGrace`. |
+| Uplink drops but Wi-Fi to the router stays up (Starlink) | Path stays satisfied, tx-without-rx accrues. Confirmation finds no server reachable, holds, records a `.suppressed` event, raises the effective timeout. Failover only happens if a server answers while the active one still does not, or after `linkDownHoldTime`. |
 | App killed while on fallback | Extension keeps running. App queries state via IPC when reopened. |
 | User activates different tunnel | Failover group implicitly deactivates (OS single-tunnel constraint). |
 | Failback probe disrupts traffic | ~15s probe window. Reverts immediately if primary still dead. |
 | Referenced tunnel deleted | Group becomes invalid. `cleanupGroups()` removes stale references. |
-| Referenced tunnel modified | `refreshFailoverGroupsContaining()` rebuilds group's provider config with updated data. |
+| Referenced tunnel modified | `refreshFailoverGroupsContaining()` rebuilds the group's provider config and hot-reloads a running group (IPC type 6); the active connection is only re-applied if its own config changed. |
 | DNS resolution fails during switch | `adapter.update()` fails. Monitor skips to next config in list. |
 
 ## Not Yet Implemented
@@ -382,9 +423,10 @@ To enable manually, add `FAILOVER_TESTING` to `SWIFT_ACTIVE_COMPILATION_CONDITIO
 - **macOS UI**: The health monitor and extension logic work on macOS, but no macOS-specific UI has been built yet (no sidebar integration, no status bar changes).
 - **Battery impact measurement**: The health monitor is lightweight (one UAPI query every 10s), but no formal power profiling has been done.
 - **Automated tests**: No test suite. The `MockTunnels` simulator infrastructure doesn't run the network extension, so the failover engine can't be tested there. Real-device testing with the `FAILOVER_TESTING` debug controls is the current approach.
-- **Probe routing bypass**: Probe and failback-probe sockets currently route through the active utun when `AllowedIPs = 0.0.0.0/0`, which breaks them as reachability tests for sibling endpoints and pollutes the active tunnel's tx/rx counters. See [docs/probe-routing-bypass.md](docs/probe-routing-bypass.md) for the chosen fix (per-IP exclusion via `excludedRoutes`) and its limitations.
+- **End-to-end confirmation pings**: confirmation is handshake-based. A stronger witness would inject ICMP echo requests into the confirmation probe's tun and require replies, proving the far side forwards traffic; that needs an injectable probe tun in Go and a `wgProbePing` bridge call.
 
 ## Related Documents
 
 - [DESIGN-background-probes-and-hot-spares.md](DESIGN-background-probes-and-hot-spares.md) — non-disruptive failback probes and the hot spare promotion mechanism.
 - [docs/probe-routing-bypass.md](docs/probe-routing-bypass.md) — why probe traffic must bypass the active tunnel and how we achieve that.
+- [DESIGN-excluded-routes.md](DESIGN-excluded-routes.md) — user-facing excluded IPs and local-network bypass, built on the same `excludedRoutes` mechanism.

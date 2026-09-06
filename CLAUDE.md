@@ -121,8 +121,10 @@ Failover groups allow ordered lists of tunnel configurations with automatic fail
 - Failover groups are `NETunnelProviderManager` instances; each member's wg-quick config is a keychain item, and `providerConfiguration` holds only persistent references (`FailoverConfigRefs`) plus names/settings — never plaintext configs
 - `ConnectionHealthMonitor` runs in the Network Extension, polling tx/rx bytes to detect unhealthy connections
 - `WireGuardAdapter.update()` hot-swaps the entire tunnel config (keys, peers, endpoint) without tearing down the VPN
-- IPC message type 0 = UAPI config, type 1 = failover state + runtime stats, type 4 = TiT stats, type 5 = full connection details (see below)
-- `TunnelsManager` maintains separate `tunnels` and `failoverGroupTunnels` arrays
+- IPC message type 0 = UAPI config, type 1 = failover state + runtime stats, type 4 = TiT stats, type 5 = full connection details (see below), type 6 = reload a running group's configuration in place
+- `TunnelsManager` maintains separate `tunnels` and `failoverGroupTunnels` arrays; member tunnels stay in `tunnels` and show "In <group>" in the list. Group detail views open a member's tunnel detail (tap on iOS, double-click on macOS) so members can always be edited
+- Groups own a private keychain copy of their primary/outer config (`Keychain.makeReference` at add/modify/refresh); `TunnelsManager.create` migrates older groups that borrowed a member's reference
+- Editing a member or a group calls `applyConfigurationToRunningGroup`, which sends IPC type 6 and falls back to restarting the group
 
 ### Background Probes & Hot Spare
 See `DESIGN-background-probes-and-hot-spares.md` for full documentation.
@@ -131,6 +133,15 @@ See `DESIGN-background-probes-and-hot-spares.md` for full documentation.
 - **Hot spare** (`hotSpare: true`, opt-in): Continuously running background probe for the next failover target. On failover, `promoteProbe()` swaps the null tun for the real utun fd inside the running device, preserving the existing Noise session — zero handshake delay.
 - **`swappableTunDevice`** (Go): Wraps inner `tun.Device` with `atomic.Value` for lock-free reads. Only used for failover groups, not regular tunnels. Per-packet overhead is effectively zero (~1-2ns atomic load).
 - **Fallback chain**: If probe start fails → legacy disruptive probe. If promotion fails → `adapter.update()` (re-handshake).
+
+### Failover Confirmation & Sensitivity
+- `confirmBeforeFailover` (default on): before switching, the next config's server must handshake, via the hot spare (fresher than 150 s) or a temporary confirmation probe (`confirmationTimeout`). No handshake from any server = link outage → failover is held, logged once, recorded as a `.suppressed` session event, re-checked every tick, and forced after `linkDownHoldTime` (0 = never).
+- Evaluation pauses while `NWPath` is unsatisfied and for `pathChangeGrace` after path changes (`networkPathDidChange(isSatisfied:)`).
+- `adaptiveSensitivity`: effective traffic timeout = `trafficTimeout × min(1.5ⁿ, 4)` over recent false alarms (held outages, quick failbacks), decaying one step per quiet 30 min. Snapshot keys: `effectiveTrafficTimeout`, `falseAlarmCount`, `confirmationState`, `suppressedSince`, `pathSatisfied`.
+
+## Excluded Routes
+
+See `DESIGN-excluded-routes.md`. Two `[Interface]` keys in the wg-quick dialect: `ExcludedIPs` (ranges that skip the tunnel) and `ExcludeLocalNetwork` (bypass the active physical interface's on-link subnets and gateways, recomputed on path changes). Implemented as system `excludedRoutes` in `PacketTunnelSettingsGenerator.excludedRoutes()`; `AllowedIPs` is untouched. `LocalNetwork.swift` resolves the local network from `NWPath` + `getifaddrs` + the routing table. Both editors and detail views expose the keys; Connection Details shows the resolved bypass.
 
 ## Connection Details View
 
@@ -141,7 +152,8 @@ type 5 payload into key/value sections and a plain-text report (share sheet on i
 
 ### Key Files
 - `Sources/WireGuardNetworkExtension/PacketTunnelProvider.swift` — `buildDiagnostics()` assembles the type 5 payload
-- `Sources/WireGuardNetworkExtension/NetworkDiagnostics.swift` + `.c/.h` — `getifaddrs` interface dump, kernel routing table via `sysctl(PF_ROUTE, NET_RT_DUMP)`, interface MTU, process info
+- `Sources/WireGuardNetworkExtension/NetworkDiagnostics.swift` — `getifaddrs` interface dump, routing table wrapper, interface MTU, process info
+- `Sources/WireGuardKitC/NetworkDiagnostics.{c,h}` — kernel routing table via `sysctl(PF_ROUTE, NET_RT_DUMP)` and interface MTU (in WireGuardKitC so `LocalNetwork.swift` can use it too)
 - `Sources/WireGuardKit/WireGuardAdapter.swift` — `getDiagnostics()`: adapter state, utun name, last applied `NEPacketTunnelNetworkSettings`, current `NWPath`, endpoint resolution
 - `Sources/WireGuardKit/UapiRuntimeSnapshot.swift` — parses a UAPI dump into per-peer JSON with secrets removed
 - `Sources/WireGuardApp/UI/ConnectionDiagnosticsModel.swift` — section builder shared by both platforms
