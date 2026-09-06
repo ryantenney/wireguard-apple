@@ -372,11 +372,26 @@ public class WireGuardAdapter {
                 completionHandler(nil)
             } catch let error as WireGuardAdapterError {
                 self.logHandler(.error, "TiT: failed to restart with updated configuration: \(error)")
+                self.tearDownAfterFailedRestart()
                 completionHandler(error)
             } catch {
                 fatalError()
             }
         }
+    }
+
+    /// Release everything `stop()` would have released, for the case where a restart failed
+    /// after the old devices were torn down (state is already `.stopped`, so `stop()` would
+    /// refuse to run). Must be called on `workQueue`.
+    private func tearDownAfterFailedRestart() {
+        networkMonitor?.cancel()
+        networkMonitor = nil
+        titOuterSettingsGenerator = nil
+        titOuterIfaceIP = nil
+        lastAppliedNetworkSettings = nil
+        localNetworkSnapshot = .empty
+        stopAllProbes()
+        state = .stopped
     }
 
     /// Shared TiT bring-up: applies INNER's network settings, resolves both configs, and starts

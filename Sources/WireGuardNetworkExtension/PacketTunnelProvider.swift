@@ -1072,6 +1072,7 @@ extension PacketTunnelProvider {
 
 extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didSwitchToConfigAt index: Int) {
+        guard monitor === adapter.healthMonitor else { return } // stale monitor from before a reload
         let previousName = failoverConfigNames.indices.contains(activeConfigIndex) ? failoverConfigNames[activeConfigIndex] : "config #\(activeConfigIndex)"
         activeConfigIndex = index
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
@@ -1089,6 +1090,7 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     }
 
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didDetectUnhealthyConnectionAt index: Int, txWithoutRxDuration: TimeInterval) {
+        guard monitor === adapter.healthMonitor else { return }
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: '\(name)' unhealthy (tx without rx for \(Int(txWithoutRxDuration))s)")
         appendFailoverEvent(FailoverEvent(
@@ -1115,6 +1117,7 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
     }
 
     func healthMonitor(_ monitor: ConnectionHealthMonitor, didFailbackToConfigAt index: Int) {
+        guard monitor === adapter.healthMonitor else { return }
         activeConfigIndex = index
         let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
         wg_log(.info, message: "Failover: successfully failed back to '\(name)'")

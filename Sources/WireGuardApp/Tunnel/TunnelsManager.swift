@@ -139,6 +139,13 @@ class TunnelsManager {
                 let isTiTGroup = providerConfig[TunnelInTunnelConfigKeys.groupId] != nil
                 guard isFailoverGroup || isTiTGroup else { continue }
                 let name = tunnelManager.localizedDescription ?? "<unknown>"
+                #if os(macOS)
+                // Another user's group: its keychain items are not visible to us, so never "repair" it.
+                if providerConfig["UID"] as? uid_t != getuid() {
+                    if let ref = proto.passwordReference { refs.insert(ref) }
+                    continue
+                }
+                #endif
                 let isShared = proto.passwordReference.map { regularRefs.contains($0) } ?? false
                 if let ref = proto.passwordReference, !isShared, proto.verifyConfigurationReference() {
                     refs.insert(ref)
