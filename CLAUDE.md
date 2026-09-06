@@ -137,7 +137,7 @@ See `DESIGN-background-probes-and-hot-spares.md` for full documentation.
 ### Failover Confirmation & Sensitivity
 - `confirmBeforeFailover` (default on): before switching, the next config's server must handshake, via the hot spare (fresher than 150 s) or a temporary confirmation probe (`confirmationTimeout`). No handshake from any server = link outage → failover is held, logged once, recorded as a `.suppressed` session event, re-checked every tick, and forced after `linkDownHoldTime` (0 = never).
 - Evaluation pauses while `NWPath` is unsatisfied and for `pathChangeGrace` after path changes (`networkPathDidChange(isSatisfied:)`).
-- `adaptiveSensitivity`: effective traffic timeout = `trafficTimeout × min(1.5ⁿ, 4)` over recent false alarms (held outages, quick failbacks), decaying one step per quiet 30 min. Snapshot keys: `effectiveTrafficTimeout`, `falseAlarmCount`, `confirmationState`, `suppressedSince`, `pathSatisfied`.
+- `adaptiveSensitivity`: effective traffic timeout = `trafficTimeout × min(1.5ⁿ, 4)` over recent false alarms (held outages that recovered on their own, quick failbacks), decaying one step per quiet 30 min. Snapshot keys: `effectiveTrafficTimeout`, `falseAlarmCount`, `confirmationState`, `suppressedSince`, `pathSatisfied`.
 
 ## Excluded Routes
 

@@ -145,14 +145,16 @@ Tx-without-rx says the active server is unreachable *from here*; it cannot say w
 1. If a hot spare is running for the next config, its last handshake is the witness: fresher than 150 s (keepalives re-handshake every ~2 min while the server answers) confirms a server-side outage.
 2. Otherwise a temporary confirmation probe is started for the next config (same machinery as a hot spare, null tun, real sockets). A handshake within `confirmationTimeout` (default 15 s) confirms it.
 3. Confirmed → fail over now. A confirmation probe is promoted with `promoteProbe`, so the new connection keeps the session it just established; a hot spare is promoted as before.
-4. Not confirmed → **held**. Logged once, recorded as a `.suppressed` session event, counted as a false alarm. The probe stays up and the check repeats every tick, so the switch happens the moment any server becomes reachable while the active one still is not. If traffic resumes on its own the incident is cleared. After `linkDownHoldTime` (default 300 s, 0 = never) the monitor switches anyway, in case only the current server is blocked on this network.
+4. Not confirmed → **held**. Logged once and recorded as a `.suppressed` session event. The probe stays up and the check repeats every tick, so the switch happens the moment any server becomes reachable while the active one still is not. If traffic resumes on its own the incident is cleared and counted as a false alarm. After `linkDownHoldTime` (default 300 s, 0 = never) the monitor switches anyway with a plain config swap (the spare has no session worth promoting), in case only the current server is blocked on this network; a hold that ends this way is not counted as a false alarm.
+
+While `NWPath` is unsatisfied every probe handle is forgotten (the adapter tears probes down offline on iOS) and the hot spare is restarted once the path is back, so a dead handle is never read as "never handshaked". A health tick that lands while a swap or promotion is still in flight (`isSwitching`) waits instead of starting a second one.
 5. If the probe cannot even start, the monitor switches without confirmation rather than sit still.
 
 Confirmation only costs anything during an outage; a running hot spare makes it free.
 
 ### Adaptive Sensitivity
 
-With `adaptiveSensitivity` (default on) the effective traffic timeout is `trafficTimeout × min(1.5ⁿ, 4)` where `n` counts recent false alarms: held outages, and failbacks that landed within two hold times of the failover that preceded them. One false alarm is forgiven per quiet half hour. Connection Details shows the effective value and the count.
+With `adaptiveSensitivity` (default on) the effective traffic timeout is `trafficTimeout × min(1.5ⁿ, 4)` where `n` counts recent false alarms: held outages that recovered on their own, and failbacks that landed within two hold times of the failover that preceded them. One false alarm is forgiven per quiet half hour. Connection Details shows the effective value and the count.
 
 ### Anti-Flap Protection
 
