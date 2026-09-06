@@ -26,6 +26,11 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseViewController {
         case healthCheckInterval
         case failbackProbeInterval
         case autoFailback
+        case confirmBeforeFailover
+        case confirmationTimeout
+        case linkDownHoldTime
+        case adaptiveSensitivity
+        case pathChangeGrace
 
         var localizedUIString: String {
             switch self {
@@ -33,6 +38,11 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseViewController {
             case .healthCheckInterval: return "Health Check Interval"
             case .failbackProbeInterval: return "Failback Probe Interval"
             case .autoFailback: return "Auto Failback"
+            case .confirmBeforeFailover: return "Confirm Before Failover"
+            case .confirmationTimeout: return "Confirmation Timeout"
+            case .linkDownHoldTime: return "Link-Down Hold"
+            case .adaptiveSensitivity: return "Adaptive Sensitivity"
+            case .pathChangeGrace: return "Path Change Grace"
             }
         }
     }
@@ -320,6 +330,12 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseViewController {
         case .healthStatus:
             if let since = state["txWithoutRxSince"] as? Double {
                 let duration = Int(Date().timeIntervalSince1970 - since)
+                if let heldSince = state["suppressedSince"] as? Double {
+                    return "Unhealthy, holding \(Int(Date().timeIntervalSince1970 - heldSince))s: no server reachable"
+                }
+                if state["confirmationProbeHandle"] as? Int != nil {
+                    return "Unhealthy (\(duration)s), confirming next server…"
+                }
                 return "Unhealthy (tx without rx for \(duration)s)"
             }
             return "Healthy"
@@ -418,6 +434,16 @@ extension FailoverGroupDetailTableViewController: NSTableViewDelegate {
                 cell.value = "\(Int(settings.failbackProbeInterval))s"
             case .autoFailback:
                 cell.value = settings.autoFailback ? "Yes" : "No"
+            case .confirmBeforeFailover:
+                cell.value = settings.confirmBeforeFailover ? "Yes" : "No"
+            case .confirmationTimeout:
+                cell.value = "\(Int(settings.confirmationTimeout))s"
+            case .linkDownHoldTime:
+                cell.value = settings.linkDownHoldTime > 0 ? "\(Int(settings.linkDownHoldTime))s" : "Forever"
+            case .adaptiveSensitivity:
+                cell.value = settings.adaptiveSensitivity ? "Yes" : "No"
+            case .pathChangeGrace:
+                cell.value = "\(Int(settings.pathChangeGrace))s"
             }
             cell.isKeyInBold = false
             return cell

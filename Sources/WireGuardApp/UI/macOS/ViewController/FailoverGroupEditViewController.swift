@@ -24,6 +24,11 @@ class FailoverGroupEditViewController: NSViewController {
     private var useBackgroundProbes: Bool
     private var hotSpare: Bool
     private var persistentKeepaliveOverride: UInt16?
+    private var confirmBeforeFailover: Bool
+    private var confirmationTimeout: TimeInterval
+    private var linkDownHoldTime: TimeInterval
+    private var adaptiveSensitivity: Bool
+    private var pathChangeGrace: TimeInterval
     private var onDemandViewModel: ActivateOnDemandViewModel
 
     // UI elements
@@ -150,6 +155,53 @@ class FailoverGroupEditViewController: NSViewController {
         return checkbox
     }()
 
+    let confirmBeforeFailoverCheckbox: NSButton = {
+        let checkbox = NSButton()
+        checkbox.title = "Confirm Before Failover"
+        checkbox.setButtonType(.switch)
+        checkbox.state = .on
+        checkbox.toolTip = "Require the next server to handshake before switching; hold if no server answers (likely a link outage)."
+        return checkbox
+    }()
+
+    let confirmBeforeFailoverRow: NSView = {
+        let view = NSView()
+        return view
+    }()
+
+    let confirmationTimeoutRow: EditableKeyValueRow = {
+        let row = EditableKeyValueRow()
+        row.key = tr(format: "macFieldKey (%@)", "Confirm Timeout (s)")
+        return row
+    }()
+
+    let linkDownHoldTimeRow: EditableKeyValueRow = {
+        let row = EditableKeyValueRow()
+        row.key = tr(format: "macFieldKey (%@)", "Link-Down Hold (s)")
+        row.valueLabel.toolTip = "How long to hold failover while no server is reachable. 0 = forever."
+        return row
+    }()
+
+    let adaptiveSensitivityCheckbox: NSButton = {
+        let checkbox = NSButton()
+        checkbox.title = "Adaptive Sensitivity"
+        checkbox.setButtonType(.switch)
+        checkbox.state = .on
+        checkbox.toolTip = "Lengthen the traffic timeout after outages that turned out to be the link, relaxing again after a quiet half hour."
+        return checkbox
+    }()
+
+    let adaptiveSensitivityRow: NSView = {
+        let view = NSView()
+        return view
+    }()
+
+    let pathChangeGraceRow: EditableKeyValueRow = {
+        let row = EditableKeyValueRow()
+        row.key = tr(format: "macFieldKey (%@)", "Path Change Grace (s)")
+        return row
+    }()
+
     let persistentKeepaliveRow: NSView = {
         let view = NSView()
         return view
@@ -209,16 +261,27 @@ class FailoverGroupEditViewController: NSViewController {
             self.useBackgroundProbes = settings.useBackgroundProbes
             self.hotSpare = settings.hotSpare
             self.persistentKeepaliveOverride = settings.persistentKeepaliveOverride
+            self.confirmBeforeFailover = settings.confirmBeforeFailover
+            self.confirmationTimeout = settings.confirmationTimeout
+            self.linkDownHoldTime = settings.linkDownHoldTime
+            self.adaptiveSensitivity = settings.adaptiveSensitivity
+            self.pathChangeGrace = settings.pathChangeGrace
             self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: tunnel)
         } else {
+            let defaults = FailoverSettings()
             self.selectedTunnelNames = []
-            self.trafficTimeout = 30
-            self.healthCheckInterval = 10
-            self.failbackProbeInterval = 300
-            self.autoFailback = true
-            self.useBackgroundProbes = true
-            self.hotSpare = false
-            self.persistentKeepaliveOverride = nil
+            self.trafficTimeout = defaults.trafficTimeout
+            self.healthCheckInterval = defaults.healthCheckInterval
+            self.failbackProbeInterval = defaults.failbackProbeInterval
+            self.autoFailback = defaults.autoFailback
+            self.useBackgroundProbes = defaults.useBackgroundProbes
+            self.hotSpare = defaults.hotSpare
+            self.persistentKeepaliveOverride = defaults.persistentKeepaliveOverride
+            self.confirmBeforeFailover = defaults.confirmBeforeFailover
+            self.confirmationTimeout = defaults.confirmationTimeout
+            self.linkDownHoldTime = defaults.linkDownHoldTime
+            self.adaptiveSensitivity = defaults.adaptiveSensitivity
+            self.pathChangeGrace = defaults.pathChangeGrace
             self.onDemandViewModel = ActivateOnDemandViewModel(from: OnDemandActivation())
         }
 
@@ -278,6 +341,9 @@ class FailoverGroupEditViewController: NSViewController {
             autoFailbackRow.topAnchor.constraint(equalTo: autoFailbackCheckbox.topAnchor),
             autoFailbackRow.bottomAnchor.constraint(equalTo: autoFailbackCheckbox.bottomAnchor)
         ])
+
+        layoutCheckboxRow(confirmBeforeFailoverCheckbox, in: confirmBeforeFailoverRow)
+        layoutCheckboxRow(adaptiveSensitivityCheckbox, in: adaptiveSensitivityRow)
 
         // Background probes row layout
         let bgProbesKeyLabel = NSTextField()
@@ -384,7 +450,9 @@ class FailoverGroupEditViewController: NSViewController {
         let margin: CGFloat = 20
         let internalSpacing: CGFloat = 10
 
-        var editorViews: [NSView] = [nameRow, connectionsArea, settingsLabel, trafficTimeoutRow, healthCheckIntervalRow, failbackProbeIntervalRow, autoFailbackRow, useBackgroundProbesRow, hotSpareRow, persistentKeepaliveRow, persistentKeepaliveValueRow, onDemandControlsRow]
+        var editorViews: [NSView] = [nameRow, connectionsArea, settingsLabel, trafficTimeoutRow, healthCheckIntervalRow, failbackProbeIntervalRow, autoFailbackRow, useBackgroundProbesRow, hotSpareRow,
+                                     confirmBeforeFailoverRow, confirmationTimeoutRow, linkDownHoldTimeRow, adaptiveSensitivityRow, pathChangeGraceRow,
+                                     persistentKeepaliveRow, persistentKeepaliveValueRow, onDemandControlsRow]
 
         let editorStackView = NSStackView(views: editorViews)
         editorStackView.orientation = .vertical
@@ -414,6 +482,29 @@ class FailoverGroupEditViewController: NSViewController {
         self.view = containerView
     }
 
+    /// Lays out a checkbox in a row view, aligned with the value column of the key/value rows.
+    private func layoutCheckboxRow(_ checkbox: NSButton, in row: NSView) {
+        let keyLabel = NSTextField()
+        keyLabel.stringValue = ""
+        keyLabel.isEditable = false
+        keyLabel.isSelectable = false
+        keyLabel.isBordered = false
+        keyLabel.backgroundColor = .clear
+
+        row.addSubview(keyLabel)
+        row.addSubview(checkbox)
+        keyLabel.translatesAutoresizingMaskIntoConstraints = false
+        checkbox.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            keyLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            keyLabel.widthAnchor.constraint(equalToConstant: 155),
+            checkbox.leadingAnchor.constraint(equalTo: keyLabel.trailingAnchor),
+            checkbox.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            row.topAnchor.constraint(equalTo: checkbox.topAnchor),
+            row.bottomAnchor.constraint(equalTo: checkbox.bottomAnchor)
+        ])
+    }
+
     func populateFields() {
         nameRow.value = tunnel?.name ?? ""
         trafficTimeoutRow.value = "\(Int(trafficTimeout))"
@@ -422,6 +513,11 @@ class FailoverGroupEditViewController: NSViewController {
         autoFailbackCheckbox.state = autoFailback ? .on : .off
         useBackgroundProbesCheckbox.state = useBackgroundProbes ? .on : .off
         hotSpareCheckbox.state = hotSpare ? .on : .off
+        confirmBeforeFailoverCheckbox.state = confirmBeforeFailover ? .on : .off
+        confirmationTimeoutRow.value = "\(Int(confirmationTimeout))"
+        linkDownHoldTimeRow.value = "\(Int(linkDownHoldTime))"
+        adaptiveSensitivityCheckbox.state = adaptiveSensitivity ? .on : .off
+        pathChangeGraceRow.value = "\(Int(pathChangeGrace))"
         persistentKeepaliveCheckbox.state = persistentKeepaliveOverride != nil ? .on : .off
         persistentKeepaliveValueRow.value = "\(persistentKeepaliveOverride ?? 25)"
         persistentKeepaliveValueRow.isHidden = persistentKeepaliveOverride == nil
@@ -452,6 +548,19 @@ class FailoverGroupEditViewController: NSViewController {
             return
         }
 
+        guard let confirmation = TimeInterval(confirmationTimeoutRow.value), confirmation > 0 else {
+            ErrorPresenter.showErrorAlert(title: "Invalid confirmation timeout value.", message: "", from: self)
+            return
+        }
+        guard let linkDownHold = TimeInterval(linkDownHoldTimeRow.value), linkDownHold >= 0 else {
+            ErrorPresenter.showErrorAlert(title: "Invalid link-down hold value.", message: "", from: self)
+            return
+        }
+        guard let pathGrace = TimeInterval(pathChangeGraceRow.value), pathGrace >= 0 else {
+            ErrorPresenter.showErrorAlert(title: "Invalid path change grace value.", message: "", from: self)
+            return
+        }
+
         var keepaliveOverride: UInt16?
         if persistentKeepaliveCheckbox.state == .on {
             guard let keepalive = UInt16(persistentKeepaliveValueRow.value), keepalive > 0 else {
@@ -468,7 +577,12 @@ class FailoverGroupEditViewController: NSViewController {
             autoFailback: autoFailbackCheckbox.state == .on,
             useBackgroundProbes: useBackgroundProbesCheckbox.state == .on,
             hotSpare: hotSpareCheckbox.state == .on,
-            persistentKeepaliveOverride: keepaliveOverride
+            persistentKeepaliveOverride: keepaliveOverride,
+            confirmBeforeFailover: confirmBeforeFailoverCheckbox.state == .on,
+            confirmationTimeout: confirmation,
+            linkDownHoldTime: linkDownHold,
+            adaptiveSensitivity: adaptiveSensitivityCheckbox.state == .on,
+            pathChangeGrace: pathGrace
         )
 
         onDemandControlsRow.saveToViewModel()

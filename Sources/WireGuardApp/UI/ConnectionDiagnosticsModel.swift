@@ -459,6 +459,30 @@ final class ConnectionDiagnosticsModel {
         if let rx = Self.uint64(monitor["monitorLastRxBytes"]), let tx = Self.uint64(monitor["monitorLastTxBytes"]) {
             stateRows.append(DiagnosticsRow(key: "Last Poll Counters", value: "rx \(FormattingHelpers.prettyBytes(rx)), tx \(FormattingHelpers.prettyBytes(tx))"))
         }
+        if let effective = Self.double(monitor["effectiveTrafficTimeout"]) {
+            let base = Self.double(Self.dict(failover["settings"])?["trafficTimeout"]) ?? effective
+            let note = effective > base + 0.5 ? " (base \(Int(base))s, raised after false alarms)" : ""
+            stateRows.append(DiagnosticsRow(key: "Effective Timeout", value: "\(Int(effective))s" + note))
+        }
+        if let falseAlarms = Self.int(monitor["falseAlarmCount"]) {
+            stateRows.append(DiagnosticsRow(key: "False Alarms", value: "\(falseAlarms)"))
+        }
+        switch Self.string(monitor["confirmationState"]) {
+        case "suppressed":
+            let held = Self.date(monitor["suppressedSince"]).map { FormattingHelpers.prettyTimeAgo(since: $0) } ?? "?"
+            stateRows.append(DiagnosticsRow(key: "Confirmation", value: "Holding failover, no server reachable (since \(held))"))
+        case "probing":
+            let index = Self.int(monitor["confirmationProbeIndex"]) ?? -1
+            let target = names.indices.contains(index) ? names[index] : "next config"
+            stateRows.append(DiagnosticsRow(key: "Confirmation", value: "Probing \(target)"))
+        case "idle":
+            stateRows.append(DiagnosticsRow(key: "Confirmation", value: "Idle"))
+        default:
+            break
+        }
+        if let pathSatisfied = Self.bool(monitor["pathSatisfied"]) {
+            stateRows.append(DiagnosticsRow(key: "Path Usable", value: pathSatisfied ? "Yes" : "No (evaluation paused)"))
+        }
         let cycles = Self.int(monitor["consecutiveCycles"]) ?? 0
         stateRows.append(DiagnosticsRow(key: "Failover Cycles", value: "\(cycles)"))
         if let maxCycles = Self.int(monitor["maxCyclesBeforeCooldown"]), let cooldown = Self.double(monitor["cooldownDuration"]) {
@@ -550,6 +574,21 @@ final class ConnectionDiagnosticsModel {
                 settingRows.append(DiagnosticsRow(key: "Keepalive Override", value: override == 0 ? "Disabled on all peers" : "\(override)s on all peers"))
             } else {
                 settingRows.append(DiagnosticsRow(key: "Keepalive Override", value: "None"))
+            }
+            if let confirm = Self.bool(settings["confirmBeforeFailover"]) {
+                settingRows.append(DiagnosticsRow(key: "Confirm Before Failover", value: confirm ? "Yes" : "No"))
+            }
+            if let timeout = Self.double(settings["confirmationTimeout"]) {
+                settingRows.append(DiagnosticsRow(key: "Confirmation Timeout", value: "\(Int(timeout))s"))
+            }
+            if let hold = Self.double(settings["linkDownHoldTime"]) {
+                settingRows.append(DiagnosticsRow(key: "Link-Down Hold", value: hold > 0 ? "\(Int(hold))s" : "Forever"))
+            }
+            if let adaptive = Self.bool(settings["adaptiveSensitivity"]) {
+                settingRows.append(DiagnosticsRow(key: "Adaptive Sensitivity", value: adaptive ? "Yes" : "No"))
+            }
+            if let grace = Self.double(settings["pathChangeGrace"]) {
+                settingRows.append(DiagnosticsRow(key: "Path Change Grace", value: "\(Int(grace))s"))
             }
             sections.append(DiagnosticsSection(title: "Failover Settings", rows: settingRows))
         }

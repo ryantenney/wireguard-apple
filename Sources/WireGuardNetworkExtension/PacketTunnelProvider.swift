@@ -522,7 +522,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             "failbackProbeInterval": settings.failbackProbeInterval,
             "autoFailback": settings.autoFailback,
             "useBackgroundProbes": settings.useBackgroundProbes,
-            "hotSpare": settings.hotSpare
+            "hotSpare": settings.hotSpare,
+            "confirmBeforeFailover": settings.confirmBeforeFailover,
+            "confirmationTimeout": settings.confirmationTimeout,
+            "linkDownHoldTime": settings.linkDownHoldTime,
+            "adaptiveSensitivity": settings.adaptiveSensitivity,
+            "pathChangeGrace": settings.pathChangeGrace
         ]
         if let override = settings.persistentKeepaliveOverride {
             info["persistentKeepaliveOverride"] = Int(override)
@@ -1095,6 +1100,19 @@ extension PacketTunnelProvider: ConnectionHealthMonitorDelegate {
         wg_log(.info, message: "Failover: '\(name)' unhealthy (tx without rx for \(Int(txWithoutRxDuration))s)")
         appendFailoverEvent(FailoverEvent(
             kind: .unhealthy,
+            timestamp: Date(),
+            fromConfigName: name,
+            toConfigName: nil,
+            txWithoutRxDuration: txWithoutRxDuration
+        ))
+    }
+
+    func healthMonitor(_ monitor: ConnectionHealthMonitor, didSuppressFailoverAt index: Int, txWithoutRxDuration: TimeInterval, reason: String) {
+        guard monitor === adapter.healthMonitor else { return }
+        let name = failoverConfigNames.indices.contains(index) ? failoverConfigNames[index] : "config #\(index)"
+        wg_log(.info, message: "Failover: holding on '\(name)' (\(reason))")
+        appendFailoverEvent(FailoverEvent(
+            kind: .suppressed,
             timestamp: Date(),
             fromConfigName: name,
             toConfigName: nil,

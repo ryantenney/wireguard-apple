@@ -405,8 +405,8 @@ public class WireGuardAdapter {
         let innerSettingsGenerator = try self.makeSettingsGenerator(with: innerTunnelConfiguration)
         try self.setNetworkSettings(innerSettingsGenerator.generateNetworkSettings())
 
-        // Resolve OUTER peers and build UAPI config.
-        let outerSettingsGenerator = try self.makeSettingsGenerator(with: outerTunnelConfiguration)
+        // Resolve OUTER peers and build UAPI config (its network settings are never applied).
+        let outerSettingsGenerator = try self.makeSettingsGenerator(with: outerTunnelConfiguration, appliesToSystem: false)
         let (outerWgConfig, outerResolutionResults) = outerSettingsGenerator.uapiConfiguration()
         self.logEndpointResolutionResults(outerResolutionResults)
 
@@ -739,7 +739,7 @@ public class WireGuardAdapter {
                 return
             }
             do {
-                let settingsGenerator = try self.makeSettingsGenerator(with: tunnelConfiguration)
+                let settingsGenerator = try self.makeSettingsGenerator(with: tunnelConfiguration, appliesToSystem: false)
                 let (wgConfig, resolutionResults) = settingsGenerator.uapiConfiguration()
                 self.logEndpointResolutionResults(resolutionResults)
 
@@ -984,12 +984,15 @@ public class WireGuardAdapter {
     /// - Parameter tunnelConfiguration: an instance of type `TunnelConfiguration`.
     /// - Throws: an error of type `WireGuardAdapterError`.
     /// - Returns: an instance of type `PacketTunnelSettingsGenerator`.
-    private func makeSettingsGenerator(with tunnelConfiguration: TunnelConfiguration) throws -> PacketTunnelSettingsGenerator {
+    /// - Parameter appliesToSystem: whether this generator's network settings will be handed to
+    ///   the system. Probe devices and the TiT outer half never are, so they must not record the
+    ///   local-network snapshot the path-change logic compares against.
+    private func makeSettingsGenerator(with tunnelConfiguration: TunnelConfiguration, appliesToSystem: Bool = true) throws -> PacketTunnelSettingsGenerator {
         return PacketTunnelSettingsGenerator(
             tunnelConfiguration: tunnelConfiguration,
             resolvedEndpoints: try self.resolvePeers(for: tunnelConfiguration),
             excludedEndpoints: self.resolveExcludedEndpoints(),
-            localNetworkRoutes: self.resolveLocalNetworkRoutes(for: tunnelConfiguration, path: self.networkMonitor?.currentPath)
+            localNetworkRoutes: appliesToSystem ? self.resolveLocalNetworkRoutes(for: tunnelConfiguration, path: self.networkMonitor?.currentPath) : []
         )
     }
 
@@ -1090,8 +1093,8 @@ public class WireGuardAdapter {
     private func didReceivePathUpdate(path: Network.NWPath) {
         self.logHandler(.verbose, "Network change detected with \(path.status) route and interface order \(path.availableInterfaces)")
 
-        // Notify health monitor of network changes (may trigger failback probe)
-        self.healthMonitor?.networkPathDidChange()
+        // Notify health monitor of network changes (pauses evaluation while offline, may trigger failback probe)
+        self.healthMonitor?.networkPathDidChange(isSatisfied: path.status.isSatisfiable)
 
         #if os(macOS)
         switch self.state {
@@ -1138,14 +1141,17 @@ public class WireGuardAdapter {
             self.logHandler(.verbose, "Connectivity online, resuming backend.")
 
             do {
-                try self.setNetworkSettings(settingsGenerator.generateNetworkSettings())
+                let resumed = settingsGenerator.replacingLocalNetworkRoutes(
+                    self.resolveLocalNetworkRoutes(for: settingsGenerator.tunnelConfiguration, path: path)
+                )
+                try self.setNetworkSettings(resumed.generateNetworkSettings())
 
-                let (wgConfig, resolutionResults) = settingsGenerator.uapiConfiguration()
+                let (wgConfig, resolutionResults) = resumed.uapiConfiguration()
                 self.logEndpointResolutionResults(resolutionResults)
 
                 self.state = .started(
                     try self.startWireGuardBackend(wgConfig: wgConfig),
-                    settingsGenerator
+                    resumed
                 )
             } catch {
                 self.logHandler(.error, "Failed to restart backend: \(error.localizedDescription)")

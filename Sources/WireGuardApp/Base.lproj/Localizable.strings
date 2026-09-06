@@ -484,7 +484,7 @@
 "macAlertUnrecognizedInterfaceKey (%@)" = "Interface contains unrecognized key ‘%@’";
 "macAlertExcludedIPInvalid (%@)" = "Invalid excluded IP: ‘%@’";
 "macAlertExcludeLocalNetworkInvalid (%@)" = "Invalid ExcludeLocalNetwork value: ‘%@’";
-"macAlertInfoUnrecognizedInterfaceKey" = "Valid keys are: ‘PrivateKey’, ‘ListenPort’, ‘Address’, ‘DNS’ and ‘MTU’.";
+"macAlertInfoUnrecognizedInterfaceKey" = "Valid keys are: ‘PrivateKey’, ‘ListenPort’, ‘Address’, ‘DNS’, ‘MTU’, ‘ExcludedIPs’ and ‘ExcludeLocalNetwork’.";
 
 "macAlertPublicKeyInvalid" = "Public key is invalid";
 "macAlertPreSharedKeyInvalid" = "Preshared key is invalid";

@@ -179,7 +179,12 @@ class TunnelImporter {
                 autoFailback: group.autoFailback ?? true,
                 useBackgroundProbes: group.useBackgroundProbes ?? true,
                 hotSpare: group.hotSpare ?? false,
-                persistentKeepaliveOverride: group.persistentKeepaliveOverride
+                persistentKeepaliveOverride: group.persistentKeepaliveOverride,
+                confirmBeforeFailover: group.confirmBeforeFailover ?? true,
+                confirmationTimeout: group.confirmationTimeout ?? 15,
+                linkDownHoldTime: group.linkDownHoldTime ?? 300,
+                adaptiveSensitivity: group.adaptiveSensitivity ?? true,
+                pathChangeGrace: group.pathChangeGrace ?? 15
             )
 
             tunnelsManager.addFailoverGroup(

@@ -26,6 +26,11 @@ class FailoverGroupEditTableViewController: UITableViewController {
     private var autoFailback: Bool
     private var useBackgroundProbes: Bool
     private var hotSpare: Bool
+    private var confirmBeforeFailover = true
+    private var confirmationTimeout: TimeInterval = 15
+    private var linkDownHoldTime: TimeInterval = 300
+    private var adaptiveSensitivity = true
+    private var pathChangeGrace: TimeInterval = 15
     private var persistentKeepaliveOverride: UInt16?
 
     // On-demand activation
@@ -51,6 +56,11 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case autoFailback
         case useBackgroundProbes
         case hotSpare
+        case confirmBeforeFailover
+        case confirmationTimeout
+        case linkDownHoldTime
+        case adaptiveSensitivity
+        case pathChangeGrace
         case persistentKeepaliveToggle
         case persistentKeepaliveValue
     }
@@ -77,6 +87,11 @@ class FailoverGroupEditTableViewController: UITableViewController {
             self.useBackgroundProbes = settings.useBackgroundProbes
             self.hotSpare = settings.hotSpare
             self.persistentKeepaliveOverride = settings.persistentKeepaliveOverride
+            self.confirmBeforeFailover = settings.confirmBeforeFailover
+            self.confirmationTimeout = settings.confirmationTimeout
+            self.linkDownHoldTime = settings.linkDownHoldTime
+            self.adaptiveSensitivity = settings.adaptiveSensitivity
+            self.pathChangeGrace = settings.pathChangeGrace
 
             self.onDemandViewModel = ActivateOnDemandViewModel(tunnel: groupTunnel)
         } else {
@@ -141,7 +156,12 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 autoFailback: self.autoFailback,
                 useBackgroundProbes: self.useBackgroundProbes,
                 hotSpare: self.hotSpare,
-                persistentKeepaliveOverride: self.persistentKeepaliveOverride
+                persistentKeepaliveOverride: self.persistentKeepaliveOverride,
+                confirmBeforeFailover: self.confirmBeforeFailover,
+                confirmationTimeout: self.confirmationTimeout,
+                linkDownHoldTime: self.linkDownHoldTime,
+                adaptiveSensitivity: self.adaptiveSensitivity,
+                pathChangeGrace: self.pathChangeGrace
             )
             self.onDemandViewModel.fixSSIDOption()
             let onDemandActivation = self.onDemandViewModel.toOnDemandActivation()
@@ -244,7 +264,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case .tunnels:
             return "First tunnel is primary. Drag to reorder priority."
         case .settings:
-            return "Failover triggers when the tunnel is sending data but not receiving any for the configured timeout."
+            return "Failover triggers when the tunnel is sending data but not receiving any for the configured timeout. With confirmation on, the next server must handshake first; if no server answers the outage is treated as your link being down and failover is held (up to the link-down hold). Adaptive sensitivity lengthens the timeout after such false alarms."
         default:
             return nil
         }
@@ -324,6 +344,40 @@ class FailoverGroupEditTableViewController: UITableViewController {
                     self?.hotSpare = isOn
                 }
                 return cell
+            case .confirmBeforeFailover:
+                let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+                cell.message = "Confirm Before Failover"
+                cell.isOn = confirmBeforeFailover
+                cell.onSwitchToggled = { [weak self] isOn in
+                    self?.confirmBeforeFailover = isOn
+                }
+                return cell
+            case .confirmationTimeout:
+                let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+                cell.textLabel?.text = "Confirmation Timeout"
+                cell.detailTextLabel?.text = "\(Int(confirmationTimeout))s"
+                cell.accessoryType = .disclosureIndicator
+                return cell
+            case .linkDownHoldTime:
+                let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+                cell.textLabel?.text = "Link-Down Hold"
+                cell.detailTextLabel?.text = linkDownHoldTime > 0 ? "\(Int(linkDownHoldTime))s" : "Forever"
+                cell.accessoryType = .disclosureIndicator
+                return cell
+            case .adaptiveSensitivity:
+                let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
+                cell.message = "Adaptive Sensitivity"
+                cell.isOn = adaptiveSensitivity
+                cell.onSwitchToggled = { [weak self] isOn in
+                    self?.adaptiveSensitivity = isOn
+                }
+                return cell
+            case .pathChangeGrace:
+                let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+                cell.textLabel?.text = "Path Change Grace"
+                cell.detailTextLabel?.text = "\(Int(pathChangeGrace))s"
+                cell.accessoryType = .disclosureIndicator
+                return cell
             case .persistentKeepaliveToggle:
                 let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
                 cell.message = "Override Persistent Keepalive"
@@ -397,7 +451,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
         if sectionType == .addTunnel {
             presentTunnelPicker()
         } else if sectionType == .settings {
-            guard let row = SettingsRow(rawValue: indexPath.row), row != .autoFailback, row != .persistentKeepaliveToggle else { return }
+            guard let row = SettingsRow(rawValue: indexPath.row),
+                  ![.autoFailback, .useBackgroundProbes, .hotSpare, .confirmBeforeFailover, .adaptiveSensitivity, .persistentKeepaliveToggle].contains(row) else { return }
             if row == .persistentKeepaliveValue {
                 presentKeepaliveEditor()
                 return
@@ -510,7 +565,16 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case .failbackProbeInterval:
             title = "Failback Probe Interval (seconds)"
             currentValue = Int(failbackProbeInterval)
-        case .autoFailback, .useBackgroundProbes, .hotSpare, .persistentKeepaliveToggle, .persistentKeepaliveValue:
+        case .confirmationTimeout:
+            title = "Confirmation Timeout (seconds)"
+            currentValue = Int(confirmationTimeout)
+        case .linkDownHoldTime:
+            title = "Link-Down Hold (seconds, 0 = forever)"
+            currentValue = Int(linkDownHoldTime)
+        case .pathChangeGrace:
+            title = "Path Change Grace (seconds)"
+            currentValue = Int(pathChangeGrace)
+        case .autoFailback, .useBackgroundProbes, .hotSpare, .confirmBeforeFailover, .adaptiveSensitivity, .persistentKeepaliveToggle, .persistentKeepaliveValue:
             return
         }
 
@@ -522,7 +586,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
         alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self, weak alert] _ in
             guard let self = self,
                   let text = alert?.textFields?.first?.text,
-                  let value = Int(text), value > 0 else { return }
+                  let value = Int(text), value >= 0, value > 0 || row == .linkDownHoldTime || row == .pathChangeGrace else { return }
             switch row {
             case .trafficTimeout:
                 self.trafficTimeout = TimeInterval(value)
@@ -530,7 +594,13 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 self.healthCheckInterval = TimeInterval(value)
             case .failbackProbeInterval:
                 self.failbackProbeInterval = TimeInterval(value)
-            case .autoFailback, .useBackgroundProbes, .hotSpare, .persistentKeepaliveToggle, .persistentKeepaliveValue:
+            case .confirmationTimeout:
+                self.confirmationTimeout = TimeInterval(value)
+            case .linkDownHoldTime:
+                self.linkDownHoldTime = TimeInterval(value)
+            case .pathChangeGrace:
+                self.pathChangeGrace = TimeInterval(value)
+            case .autoFailback, .useBackgroundProbes, .hotSpare, .confirmBeforeFailover, .adaptiveSensitivity, .persistentKeepaliveToggle, .persistentKeepaliveValue:
                 break
             }
             self.tableView.reloadSections(IndexSet(integer: Section.settings.rawValue), with: .none)

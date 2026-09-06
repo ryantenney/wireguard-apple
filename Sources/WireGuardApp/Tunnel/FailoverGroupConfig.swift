@@ -17,6 +17,11 @@ struct FailoverGroupConfig {
     var useBackgroundProbes: Bool?
     var hotSpare: Bool?
     var persistentKeepaliveOverride: UInt16?
+    var confirmBeforeFailover: Bool?
+    var confirmationTimeout: TimeInterval?
+    var linkDownHoldTime: TimeInterval?
+    var adaptiveSensitivity: Bool?
+    var pathChangeGrace: TimeInterval?
 
     // MARK: - Parsing
 
@@ -109,6 +114,24 @@ struct FailoverGroupConfig {
                         guard let v = UInt16(val) else { throw ParseError.invalidValue(key: "PersistentKeepaliveOverride", value: val) }
                         self.persistentKeepaliveOverride = v
                     }
+                    if let val = attributes["confirmbeforefailover"] {
+                        self.confirmBeforeFailover = val.lowercased() == "true"
+                    }
+                    if let val = attributes["confirmationtimeout"] {
+                        guard let t = TimeInterval(val) else { throw ParseError.invalidValue(key: "ConfirmationTimeout", value: val) }
+                        self.confirmationTimeout = t
+                    }
+                    if let val = attributes["linkdownholdtime"] {
+                        guard let t = TimeInterval(val) else { throw ParseError.invalidValue(key: "LinkDownHoldTime", value: val) }
+                        self.linkDownHoldTime = t
+                    }
+                    if let val = attributes["adaptivesensitivity"] {
+                        self.adaptiveSensitivity = val.lowercased() == "true"
+                    }
+                    if let val = attributes["pathchangegrace"] {
+                        guard let t = TimeInterval(val) else { throw ParseError.invalidValue(key: "PathChangeGrace", value: val) }
+                        self.pathChangeGrace = t
+                    }
 
                 case .inConnectionSection:
                     if let tunnelName = attributes["tunnel"]?.trimmingCharacters(in: .whitespacesAndNewlines), !tunnelName.isEmpty {
@@ -169,6 +192,21 @@ struct FailoverGroupConfig {
         if let persistentKeepaliveOverride = persistentKeepaliveOverride {
             output += "PersistentKeepaliveOverride = \(persistentKeepaliveOverride)\n"
         }
+        if let confirmBeforeFailover = confirmBeforeFailover {
+            output += "ConfirmBeforeFailover = \(confirmBeforeFailover)\n"
+        }
+        if let confirmationTimeout = confirmationTimeout {
+            output += "ConfirmationTimeout = \(Int(confirmationTimeout))\n"
+        }
+        if let linkDownHoldTime = linkDownHoldTime {
+            output += "LinkDownHoldTime = \(Int(linkDownHoldTime))\n"
+        }
+        if let adaptiveSensitivity = adaptiveSensitivity {
+            output += "AdaptiveSensitivity = \(adaptiveSensitivity)\n"
+        }
+        if let pathChangeGrace = pathChangeGrace {
+            output += "PathChangeGrace = \(Int(pathChangeGrace))\n"
+        }
         for tunnelName in tunnelNames {
             output += "\n[Connection]\nTunnel = \(tunnelName)\n"
         }
@@ -196,6 +234,11 @@ struct FailoverGroupConfig {
         if let persistentKeepaliveOverride = settings.persistentKeepaliveOverride {
             output += "PersistentKeepaliveOverride = \(persistentKeepaliveOverride)\n"
         }
+        output += "ConfirmBeforeFailover = \(settings.confirmBeforeFailover)\n"
+        output += "ConfirmationTimeout = \(Int(settings.confirmationTimeout))\n"
+        output += "LinkDownHoldTime = \(Int(settings.linkDownHoldTime))\n"
+        output += "AdaptiveSensitivity = \(settings.adaptiveSensitivity)\n"
+        output += "PathChangeGrace = \(Int(settings.pathChangeGrace))\n"
         for name in configNames {
             output += "\n[Connection]\nTunnel = \(name)\n"
         }

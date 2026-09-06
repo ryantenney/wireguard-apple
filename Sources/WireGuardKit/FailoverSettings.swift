@@ -39,6 +39,26 @@ public struct FailoverSettings: Codable, Equatable {
     /// monitor holds instead of cycling configs. See DESIGN-captive-portal-handling.md.
     public var captivePortalDetection: Bool
 
+    /// Before switching, require the next configuration's server to complete a WireGuard
+    /// handshake (via the hot spare, or a temporary probe). If no server can be reached the
+    /// outage is treated as the local link's fault and failover is held back.
+    public var confirmBeforeFailover: Bool
+
+    /// How long a temporary confirmation probe may take to handshake before the outage is
+    /// classified as a link problem.
+    public var confirmationTimeout: TimeInterval
+
+    /// Maximum time to hold failover while no server is reachable. After this the monitor
+    /// switches anyway, in case only the current server is blocked on this network. 0 = never.
+    public var linkDownHoldTime: TimeInterval
+
+    /// Scale the traffic timeout up (×1.5 per false alarm, capped at ×4) after outages that
+    /// turned out to be the link, decaying back after a quiet half hour.
+    public var adaptiveSensitivity: Bool
+
+    /// Ignore tx-without-rx for this long after a network path change (roaming blips).
+    public var pathChangeGrace: TimeInterval
+
     public init(
         trafficTimeout: TimeInterval = 30,
         healthCheckInterval: TimeInterval = 10,
@@ -47,7 +67,12 @@ public struct FailoverSettings: Codable, Equatable {
         useBackgroundProbes: Bool = true,
         hotSpare: Bool = false,
         persistentKeepaliveOverride: UInt16? = nil,
-        captivePortalDetection: Bool = true
+        captivePortalDetection: Bool = true,
+        confirmBeforeFailover: Bool = true,
+        confirmationTimeout: TimeInterval = 15,
+        linkDownHoldTime: TimeInterval = 300,
+        adaptiveSensitivity: Bool = true,
+        pathChangeGrace: TimeInterval = 15
     ) {
         self.trafficTimeout = trafficTimeout
         self.healthCheckInterval = healthCheckInterval
@@ -57,6 +82,11 @@ public struct FailoverSettings: Codable, Equatable {
         self.hotSpare = hotSpare
         self.persistentKeepaliveOverride = persistentKeepaliveOverride
         self.captivePortalDetection = captivePortalDetection
+        self.confirmBeforeFailover = confirmBeforeFailover
+        self.confirmationTimeout = confirmationTimeout
+        self.linkDownHoldTime = linkDownHoldTime
+        self.adaptiveSensitivity = adaptiveSensitivity
+        self.pathChangeGrace = pathChangeGrace
     }
 
     // MARK: - Migration from older settings
@@ -70,6 +100,11 @@ public struct FailoverSettings: Codable, Equatable {
         case hotSpare
         case persistentKeepaliveOverride
         case captivePortalDetection
+        case confirmBeforeFailover
+        case confirmationTimeout
+        case linkDownHoldTime
+        case adaptiveSensitivity
+        case pathChangeGrace
         // Legacy key
         case handshakeTimeout
     }
@@ -92,6 +127,11 @@ public struct FailoverSettings: Codable, Equatable {
         self.hotSpare = try container.decodeIfPresent(Bool.self, forKey: .hotSpare) ?? false
         self.persistentKeepaliveOverride = try container.decodeIfPresent(UInt16.self, forKey: .persistentKeepaliveOverride)
         self.captivePortalDetection = try container.decodeIfPresent(Bool.self, forKey: .captivePortalDetection) ?? true
+        self.confirmBeforeFailover = try container.decodeIfPresent(Bool.self, forKey: .confirmBeforeFailover) ?? true
+        self.confirmationTimeout = try container.decodeIfPresent(TimeInterval.self, forKey: .confirmationTimeout) ?? 15
+        self.linkDownHoldTime = try container.decodeIfPresent(TimeInterval.self, forKey: .linkDownHoldTime) ?? 300
+        self.adaptiveSensitivity = try container.decodeIfPresent(Bool.self, forKey: .adaptiveSensitivity) ?? true
+        self.pathChangeGrace = try container.decodeIfPresent(TimeInterval.self, forKey: .pathChangeGrace) ?? 15
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -104,5 +144,10 @@ public struct FailoverSettings: Codable, Equatable {
         try container.encode(hotSpare, forKey: .hotSpare)
         try container.encodeIfPresent(persistentKeepaliveOverride, forKey: .persistentKeepaliveOverride)
         try container.encode(captivePortalDetection, forKey: .captivePortalDetection)
+        try container.encode(confirmBeforeFailover, forKey: .confirmBeforeFailover)
+        try container.encode(confirmationTimeout, forKey: .confirmationTimeout)
+        try container.encode(linkDownHoldTime, forKey: .linkDownHoldTime)
+        try container.encode(adaptiveSensitivity, forKey: .adaptiveSensitivity)
+        try container.encode(pathChangeGrace, forKey: .pathChangeGrace)
     }
 }
