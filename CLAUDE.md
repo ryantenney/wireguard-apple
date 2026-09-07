@@ -214,7 +214,7 @@ Keeps a pre-warmed UDP socket on the cellular interface (`IP_BOUND_IF`) while Wi
 
 ### Notes
 - Go bridge functions: `wgTurnOnWarm`, `wgWarmSetCellular`, `wgWarmClearCellular`, `wgWarmSetActivePath`, `wgWarmGetState`, `wgWarmStartEimTest`. Warm handles live in `tunnelHandles`, so `wgSetConfig`/`wgBumpSockets`/`wgTurnOff` work unchanged.
-- IPC message type 5 = warm spare status, 6 = run EIM self-test, 7 = debug force path (`FAILOVER_TESTING`)
+- IPC message type 7 = warm spare status, 8 = run EIM self-test, 9 = debug force path (`FAILOVER_TESTING`) — see `ProviderMessage`
 - Cellular sockets survive `BindUpdate` Close/Open cycles by design (the warm NAT mapping must outlive socket bumps)
 - Probes/keepalives go only to `probePort` (never the WireGuard port — premature re-homing) and target the tunnel endpoint IP (shares its routing exception)
 - Warm spare requires the always-connected on-demand mode (`ActivateOnDemandOption.anyInterface(.anySSID)`, i.e. "Always On"); `supportsWarmSpare` encodes this for UI
