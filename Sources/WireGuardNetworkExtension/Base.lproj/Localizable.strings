@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MIT
+// Copyright © 2026 Ryan Tenney. All Rights Reserved.
+
+// Local notifications posted by the network extension. The extension is its
+// own bundle, so these cannot live in the app's Localizable.strings.
+
+"notificationTitleDisconnected" = "VPN Disconnected";
+"notificationBodyDisconnected (%@)" = "'%@' has been disconnected.";
+
+"notificationTitleFailover" = "VPN Failover";
+"notificationBodyFailover (%1$@ to %2$@)" = "Switched from '%1$@' to '%2$@'.";
+
+"notificationTitleFailback" = "VPN Failback";
+"notificationBodyFailback (%@)" = "Returned to primary connection '%@'.";
+
+"notificationTitleCaptivePortal" = "Wi-Fi Network Requires Sign-In";
+"notificationBodyCaptivePortal" = "A captive portal is blocking the VPN. Tap to sign in to the network.";

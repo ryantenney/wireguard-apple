@@ -324,7 +324,10 @@ targets:
     type: app-extension
     platform: iOS
     sources:
-      - path: Sources/WireGuardWidget/WireGuardWidget.swift
+      - path: Sources/WireGuardWidget
+        includes:
+          - WireGuardWidget.swift
+          - "*.lproj/**"
       - path: Sources/Shared/VPNStatusData.swift
       - path: Sources/Shared/VPNTrafficData.swift
       - path: Sources/Shared/IPDiscoverySettings.swift

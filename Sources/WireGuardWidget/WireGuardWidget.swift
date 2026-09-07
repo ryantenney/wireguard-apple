@@ -361,7 +361,7 @@ struct VPNStatusWidgetView: View {
         HStack(spacing: 3) {
             Image(systemName: "bolt.fill")
                 .font(.system(size: 8))
-            Text(entry.isOnDemandEnabled ? "On-Demand Active" : "On-Demand Configured")
+            Text(NSLocalizedString(entry.isOnDemandEnabled ? "widgetOnDemandActive" : "widgetOnDemandConfigured", comment: ""))
                 .font(.system(.caption2, design: .monospaced))
         }
         .foregroundColor(WidgetPalette.armed)
@@ -369,10 +369,10 @@ struct VPNStatusWidgetView: View {
 
     var statusText: String {
         switch entry.state {
-        case .connected: return "Connected"
-        case .connecting: return "Connecting…"
-        case .disconnected: return entry.hasOnDemandRules ? "Armed" : "Disconnected"
-        case .disconnecting: return "Disconnecting…"
+        case .connected: return NSLocalizedString("widgetStatusConnected", comment: "")
+        case .connecting: return NSLocalizedString("widgetStatusConnecting", comment: "")
+        case .disconnected: return NSLocalizedString(entry.hasOnDemandRules ? "widgetStatusArmed" : "widgetStatusDisconnected", comment: "")
+        case .disconnecting: return NSLocalizedString("widgetStatusDisconnecting", comment: "")
         }
     }
 

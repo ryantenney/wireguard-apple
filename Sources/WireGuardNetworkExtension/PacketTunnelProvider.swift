@@ -1062,8 +1062,8 @@ extension PacketTunnelProvider {
         guard NotificationSettings.isDisconnectNotificationEnabled else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "VPN Disconnected"
-        content.body = "'\(tunnelName)' has been disconnected."
+        content.title = NSLocalizedString("notificationTitleDisconnected", comment: "")
+        content.body = String(format: NSLocalizedString("notificationBodyDisconnected (%@)", comment: ""), tunnelName)
         content.sound = .default
 
         let request = UNNotificationRequest(identifier: "vpn-disconnect-\(UUID().uuidString)", content: content, trigger: nil)
@@ -1078,8 +1078,8 @@ extension PacketTunnelProvider {
         guard NotificationSettings.isFailoverNotificationEnabled else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "VPN Failover"
-        content.body = "Switched from '\(fromName)' to '\(toName)'."
+        content.title = NSLocalizedString("notificationTitleFailover", comment: "")
+        content.body = String(format: NSLocalizedString("notificationBodyFailover (%1$@ to %2$@)", comment: ""), fromName, toName)
         content.sound = .default
 
         let request = UNNotificationRequest(identifier: "vpn-failover-\(UUID().uuidString)", content: content, trigger: nil)
@@ -1094,8 +1094,8 @@ extension PacketTunnelProvider {
         guard NotificationSettings.isFailoverNotificationEnabled else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "VPN Failback"
-        content.body = "Returned to primary connection '\(name)'."
+        content.title = NSLocalizedString("notificationTitleFailback", comment: "")
+        content.body = String(format: NSLocalizedString("notificationBodyFailback (%@)", comment: ""), name)
         content.sound = .default
 
         let request = UNNotificationRequest(identifier: "vpn-failback-\(UUID().uuidString)", content: content, trigger: nil)
@@ -1110,8 +1110,8 @@ extension PacketTunnelProvider {
         guard NotificationSettings.isCaptivePortalNotificationEnabled else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Wi-Fi Network Requires Sign-In"
-        content.body = "A captive portal is blocking the VPN. Tap to sign in to the network."
+        content.title = NSLocalizedString("notificationTitleCaptivePortal", comment: "")
+        content.body = NSLocalizedString("notificationBodyCaptivePortal", comment: "")
         content.sound = .default
         content.categoryIdentifier = NotificationSettings.captivePortalCategoryIdentifier
 

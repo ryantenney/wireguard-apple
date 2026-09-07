@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MIT
+// Copyright © 2026 Ryan Tenney. All Rights Reserved.
+
+// The widget is its own bundle, so these cannot live in the app's
+// Localizable.strings. The "WGNEXT" wordmark is deliberately not localized.
+
+"widgetStatusConnected" = "Connected";
+"widgetStatusConnecting" = "Connecting…";
+"widgetStatusDisconnected" = "Disconnected";
+"widgetStatusDisconnecting" = "Disconnecting…";
+"widgetStatusArmed" = "Armed";
+
+"widgetOnDemandActive" = "On-Demand Active";
+"widgetOnDemandConfigured" = "On-Demand Configured";
