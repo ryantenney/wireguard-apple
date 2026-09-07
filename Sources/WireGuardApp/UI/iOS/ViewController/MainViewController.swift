@@ -56,7 +56,7 @@ class MainViewController: UISplitViewController {
                 self.onTunnelsManagerReady = nil
 
                 if MapHomeSettings.isShownAtLaunch {
-                    self.tunnelsListVC?.presentMapHomeAtLaunch()
+                    self.homeHost?.presentMapHomeAtLaunch()
                 }
             }
         }

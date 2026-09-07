@@ -30,6 +30,8 @@ final class TunnelsHomeHostingController: UIHostingController<AnyView> {
     let theme: AppTheme
     let router: AppRouter
     private var cancellables = Set<AnyCancellable>()
+    /// Set when open-at-launch fires before this controller is in a window.
+    private var pendingMapHomeAtLaunch = false
 
     init() {
         let theme = AppTheme()
@@ -60,6 +62,14 @@ final class TunnelsHomeHostingController: UIHostingController<AnyView> {
         applyTheme()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if pendingMapHomeAtLaunch {
+            pendingMapHomeAtLaunch = false
+            presentMapHome(animated: false)
+        }
+    }
+
     // MARK: - Installation
 
     func install(manager: TunnelsManager) {
@@ -77,6 +87,22 @@ final class TunnelsHomeHostingController: UIHostingController<AnyView> {
 
     func refreshStatuses() {
         router.store?.refreshStatuses()
+    }
+
+    /// Presents the Map Home landing page as soon as this controller is in a
+    /// window (called at launch when the user has enabled "Open at launch").
+    func presentMapHomeAtLaunch() {
+        if viewIfLoaded?.window != nil {
+            presentMapHome(animated: false)
+        } else {
+            pendingMapHomeAtLaunch = true
+        }
+    }
+
+    private func presentMapHome(animated: Bool) {
+        guard let manager = router.store?.manager else { return }
+        guard presentedViewController == nil else { return }
+        present(MapHomeViewController(tunnelsManager: manager), animated: animated)
     }
 
     func showTunnelDetail(named name: String, shouldToggle: Bool) {
