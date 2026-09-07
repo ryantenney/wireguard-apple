@@ -43,7 +43,7 @@ class ConnectionDiagnosticsTableViewController: UITableViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Connection Details"
+        title = tr("groupDetailConnectionDetailsTitle")
         tableView.estimatedRowHeight = 44
         tableView.rowHeight = UITableView.automaticDimension
         tableView.register(KeyValueCell.self)

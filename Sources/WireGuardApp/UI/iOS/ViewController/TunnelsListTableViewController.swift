@@ -183,14 +183,14 @@ class TunnelsListTableViewController: UIViewController {
         }
         alert.addAction(createFromScratchAction)
 
-        let createFailoverGroupAction = UIAlertAction(title: "Create Failover Group", style: .default) { [weak self] _ in
+        let createFailoverGroupAction = UIAlertAction(title: tr("tunnelsListCreateFailoverGroup"), style: .default) { [weak self] _ in
             if let self = self, let tunnelsManager = self.tunnelsManager {
                 self.presentFailoverGroupEditor(tunnelsManager: tunnelsManager)
             }
         }
         alert.addAction(createFailoverGroupAction)
 
-        let createTiTGroupAction = UIAlertAction(title: "Create Tunnel-in-Tunnel", style: .default) { [weak self] _ in
+        let createTiTGroupAction = UIAlertAction(title: tr("tunnelsListCreateTiTGroup"), style: .default) { [weak self] _ in
             if let self = self, let tunnelsManager = self.tunnelsManager {
                 self.presentTiTGroupEditor(tunnelsManager: tunnelsManager)
             }
@@ -420,11 +420,11 @@ extension TunnelsListTableViewController: UITableViewDataSource {
         let hasGroups = (tunnelsManager?.numberOfFailoverGroups() ?? 0) > 0 || (tunnelsManager?.numberOfTiTGroups() ?? 0) > 0
         switch listSection {
         case .failoverGroups:
-            return (tunnelsManager?.numberOfFailoverGroups() ?? 0) == 0 ? nil : "Failover Groups"
+            return (tunnelsManager?.numberOfFailoverGroups() ?? 0) == 0 ? nil : tr("tunnelsListSectionFailoverGroups")
         case .titGroups:
-            return (tunnelsManager?.numberOfTiTGroups() ?? 0) == 0 ? nil : "Tunnel-in-Tunnel"
+            return (tunnelsManager?.numberOfTiTGroups() ?? 0) == 0 ? nil : tr("tunnelsListSectionTiTGroups")
         case .tunnels:
-            return hasGroups ? "Tunnels" : nil
+            return hasGroups ? tr("tunnelsListSectionTunnels") : nil
         }
     }
 
@@ -563,7 +563,7 @@ extension TunnelsListTableViewController: UITableViewDelegate {
 
         switch listSection {
         case .failoverGroups:
-            let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completionHandler in
+            let deleteAction = UIContextualAction(style: .destructive, title: tr("actionDelete")) { [weak self] _, _, completionHandler in
                 guard let self = self, let tunnelsManager = self.tunnelsManager else { return }
                 let groupTunnel = tunnelsManager.failoverGroup(at: indexPath.row)
                 tunnelsManager.removeFailoverGroup(tunnel: groupTunnel) { error in
@@ -578,7 +578,7 @@ extension TunnelsListTableViewController: UITableViewDelegate {
             return UISwipeActionsConfiguration(actions: [deleteAction])
 
         case .titGroups:
-            let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completionHandler in
+            let deleteAction = UIContextualAction(style: .destructive, title: tr("actionDelete")) { [weak self] _, _, completionHandler in
                 guard let self = self, let tunnelsManager = self.tunnelsManager else { return }
                 let groupTunnel = tunnelsManager.titGroup(at: indexPath.row)
                 tunnelsManager.removeTiTGroup(tunnel: groupTunnel) { error in

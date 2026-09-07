@@ -60,8 +60,8 @@ struct FailoverGroupSpec: TunnelGroupSpec {
     var onDemandActivation: OnDemandActivation
 
     func validate() -> String? {
-        if name.isEmpty { return "Name is empty" }
-        if tunnelNames.count < 2 { return "Failover group must have at least 2 tunnels" }
+        if name.isEmpty { return tr("groupValidationNameEmpty") }
+        if tunnelNames.count < 2 { return tr("groupValidationFailoverNeedsTwo") }
         return nil
     }
 
@@ -150,8 +150,8 @@ struct TiTGroupSpec: TunnelGroupSpec {
     var onDemandActivation: OnDemandActivation
 
     func validate() -> String? {
-        if name.isEmpty { return "Name is empty" }
-        if outerTunnelName == innerTunnelName { return "Outer and inner tunnels must be different" }
+        if name.isEmpty { return tr("groupValidationNameEmpty") }
+        if outerTunnelName == innerTunnelName { return tr("groupValidationTiTSameTunnel") }
         return nil
     }
 

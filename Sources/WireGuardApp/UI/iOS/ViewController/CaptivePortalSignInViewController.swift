@@ -52,7 +52,7 @@ class CaptivePortalSignInViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Wi-Fi Sign-In"
+        title = tr("captivePortalSignInTitle")
         view.backgroundColor = .systemBackground
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(doneTapped))
@@ -86,7 +86,7 @@ class CaptivePortalSignInViewController: UIViewController {
             return
         }
 
-        title = "Pausing VPN…"
+        title = tr("captivePortalPausingTitle")
         pausedTunnel = tunnel
         tunnelsManager.startDeactivation(of: tunnel)
 
@@ -129,7 +129,7 @@ class CaptivePortalSignInViewController: UIViewController {
     // MARK: - Portal page & probing
 
     private func loadPortalPage() {
-        title = "Wi-Fi Sign-In"
+        title = tr("captivePortalSignInTitle")
         webView.load(URLRequest(url: CaptivePortalDetector.defaultProbeURL))
         startProbing()
     }
@@ -152,7 +152,7 @@ class CaptivePortalSignInViewController: UIViewController {
 
     private func handleNetworkCleared() {
         stopTimers()
-        title = "Signed In"
+        title = tr("captivePortalSignedInTitle")
         resumeTunnelIfNeeded()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             self?.dismiss(animated: true)

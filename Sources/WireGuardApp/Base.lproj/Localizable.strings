@@ -652,3 +652,233 @@
 "speedTestResultValueNone" = "None";
 "speedTestResultValueUnknown" = "Unknown";
 "speedTestResultDeleteButtonTitle" = "Delete result";
+
+// MARK: - Warm spare (iOS)
+
+"warmSpareTitle" = "Warm Spare";
+
+"warmSpareSectionPolicy" = "Warming Policy";
+"warmSpareSectionThresholds" = "Probing & Switching";
+"warmSpareSectionStatus" = "Status";
+"warmSpareSectionNatTest" = "Carrier NAT";
+"warmSpareSectionDebug" = "Debug";
+
+"warmSpareFooterUnsupported" = "Warm spare requires on-demand activation for any interface (Always On). With other on-demand modes the VPN isn't running while on Wi-Fi, so there is nothing to keep warm.";
+"warmSpareFooterEnable" = "Keeps a ready-to-use connection on cellular while on Wi-Fi, so losing Wi-Fi switches paths in under a second without reconnecting. Note that Wi-Fi traffic always rides the tunnel in this mode. Changes apply the next time the tunnel starts.";
+"warmSpareFooterAdaptiveOn" = "Cellular is kept warm only when Wi-Fi quality starts degrading. Uses less battery.";
+"warmSpareFooterAdaptiveOff" = "Cellular is kept warm whenever the tunnel is on Wi-Fi. Fastest failover, but each keepalive can wake the cellular radio.";
+"warmSpareFooterThresholds" = "The probe port must match the echo responder running on the WireGuard server, and must differ from the WireGuard port.";
+
+"warmSpareToggleEnable" = "Warm Spare";
+"warmSpareToggleAdaptive" = "Adaptive Warming";
+
+"warmSpareFieldKeepaliveInterval" = "Keepalive Interval";
+"warmSpareFieldProbePort" = "Probe Port";
+"warmSpareFieldSwitchRtt" = "Switch RTT Threshold";
+"warmSpareFieldSwitchLoss" = "Switch Loss Threshold";
+"warmSpareFieldRecoveryDwell" = "Recovery Dwell";
+
+"warmSpareEditorKeepaliveInterval" = "Keepalive Interval (seconds)";
+"warmSpareEditorProbePort" = "Probe Port";
+"warmSpareEditorSwitchRtt" = "Switch RTT Threshold (ms)";
+"warmSpareEditorSwitchLoss" = "Switch Loss Threshold (%)";
+"warmSpareEditorRecoveryDwell" = "Recovery Dwell (seconds)";
+
+"warmSpareKeyState" = "State";
+"warmSpareKeyActivePath" = "Active Path";
+"warmSpareKeyDefaultPath" = "Default Path";
+"warmSpareKeyCellular" = "Cellular";
+"warmSpareKeyMapping" = "Mapping";
+
+"warmSpareStateWifiCellCold" = "On Wi-Fi, cellular idle";
+"warmSpareStateWifiCellWarm" = "On Wi-Fi, cellular warm";
+"warmSpareStateCellActive" = "On cellular";
+"warmSpareStateRecovering (%d)" = "Returning to Wi-Fi (%ds)";
+"warmSpareStateRecoveringNoDwell" = "Returning to Wi-Fi";
+"warmSpareStateUnknown" = "Unknown";
+
+"warmSparePathCellular" = "Cellular";
+"warmSparePathPrimary" = "Default (Wi-Fi)";
+
+"warmSpareQualityNoSamples" = "No samples";
+"warmSpareQualityNoReplies" = "No replies";
+"warmSpareQualityRtt (%d)" = "%d ms";
+"warmSpareQualityLoss (%d)" = "%d%% loss";
+
+"warmSpareNatVerdictEim" = "Compatible (endpoint-independent)";
+"warmSpareNatVerdictEdm" = "Endpoint-dependent";
+"warmSpareNatVerdictPending" = "Testing…";
+"warmSpareNatVerdictUnreachable" = "No reply";
+"warmSpareNatVerdictUntested" = "Not tested";
+
+"warmSpareNatFooterUntested" = "Tests whether your carrier's NAT lets the warm connection be reused instantly on failover.";
+"warmSpareNatFooterEim" = "Your carrier's NAT reuses the warm mapping — failover reuses the existing session with no extra delay.";
+"warmSpareNatFooterEdm" = "Your carrier's NAT assigns a new mapping per destination. Warm spare still helps (the radio and connection stay ready), but the first exchange after failover may take slightly longer.";
+"warmSpareNatFooterUnreachable" = "No reply over cellular. Check that the echo responder is running on the server and that cellular data is available.";
+
+"warmSpareRunNatTestButtonTitle" = "Run Carrier NAT Test";
+"warmSpareForceCellularButtonTitle" = "Force Cellular Path";
+"warmSpareForcePrimaryButtonTitle" = "Force Primary Path";
+"warmSpareResumeAutomaticButtonTitle" = "Resume Automatic Control";
+
+"warmSpareTestNotStartedTitle" = "Test Not Started";
+"warmSpareTestNotStartedMessage" = "The tunnel must be active with warm spare engaged and cellular available.";
+
+"warmSpareValueSeconds (%d)" = "%ds";
+"warmSpareValueMilliseconds (%d)" = "%d ms";
+"warmSpareValuePercent (%d)" = "%d%%";
+
+// MARK: - Failover group edit (iOS)
+
+"failoverGroupNewTitle" = "New Failover Group";
+"failoverGroupEditTitle" = "Edit Failover Group";
+"failoverGroupErrorTitle" = "Error";
+
+"failoverGroupSectionName" = "Name";
+"failoverGroupSectionConnections" = "Connections (in priority order)";
+"failoverGroupSectionSettings" = "Failover Settings";
+"failoverGroupSectionOnDemand" = "On-Demand Activation";
+
+"failoverGroupFooterConnections" = "First tunnel is primary. Drag to reorder priority.";
+"failoverGroupFooterSettings" = "Failover triggers when the tunnel is sending data but not receiving any for the configured timeout. With confirmation on, the next server must handshake first; if no server answers the outage is treated as your link being down and failover is held (up to the link-down hold). Adaptive sensitivity lengthens the timeout after such false alarms.";
+
+"failoverGroupNamePlaceholder" = "Group Name";
+"failoverGroupRolePrimary" = "Primary";
+"failoverGroupRoleFallback (%d)" = "Fallback #%d";
+
+"failoverGroupAddTunnelButtonTitle" = "Add Tunnel";
+"failoverGroupDeleteButtonTitle" = "Delete Failover Group";
+"failoverGroupRemoveActionTitle" = "Remove";
+
+"failoverGroupFieldTrafficTimeout" = "Traffic Timeout";
+"failoverGroupFieldHealthCheckInterval" = "Health Check Interval";
+"failoverGroupFieldFailbackProbeInterval" = "Failback Probe Interval";
+"failoverGroupFieldConfirmationTimeout" = "Confirmation Timeout";
+"failoverGroupFieldLinkDownHold" = "Link-Down Hold";
+"failoverGroupFieldPathChangeGrace" = "Path Change Grace";
+"failoverGroupFieldKeepaliveInterval" = "Keepalive Interval";
+
+"failoverGroupToggleAutoFailback" = "Auto Failback";
+"failoverGroupToggleBackgroundProbes" = "Background Probes";
+"failoverGroupToggleHotSpare" = "Hot Spare";
+"failoverGroupToggleConfirmBeforeFailover" = "Confirm Before Failover";
+"failoverGroupToggleAdaptiveSensitivity" = "Adaptive Sensitivity";
+"failoverGroupToggleKeepaliveOverride" = "Override Persistent Keepalive";
+
+"failoverGroupEditorTrafficTimeout" = "Traffic Timeout (seconds)";
+"failoverGroupEditorHealthCheckInterval" = "Health Check Interval (seconds)";
+"failoverGroupEditorFailbackProbeInterval" = "Failback Probe Interval (seconds)";
+"failoverGroupEditorConfirmationTimeout" = "Confirmation Timeout (seconds)";
+"failoverGroupEditorLinkDownHold" = "Link-Down Hold (seconds, 0 = forever)";
+"failoverGroupEditorPathChangeGrace" = "Path Change Grace (seconds)";
+"failoverGroupEditorKeepaliveInterval" = "Keepalive Interval (seconds)";
+
+"failoverGroupValueSeconds (%d)" = "%ds";
+"failoverGroupValueForever" = "Forever";
+
+"failoverGroupAddTunnelsTitle" = "Add Tunnels";
+"failoverGroupAddCountButtonTitle (%d)" = "Add (%d)";
+"failoverGroupAddButtonTitle" = "Add";
+"failoverGroupAddTunnelsFooter" = "Tap to select tunnels, then press Add.";
+
+// MARK: - Shared actions
+
+"actionDelete" = "Delete";
+"actionYes" = "Yes";
+"actionNo" = "No";
+
+// MARK: - Failover group detail (shared iOS/macOS)
+
+"failoverGroupSectionTunnels" = "Connections";
+"failoverGroupSectionActiveConnection" = "Active Connection";
+"failoverGroupSectionDebug" = "Debug";
+
+"failoverGroupFieldNetwork" = "Network";
+"failoverGroupFieldFailoverCount" = "Failover Count";
+"failoverGroupFieldLastFailover" = "Last Failover";
+"failoverGroupFieldHealthStatus" = "Health";
+"failoverGroupFieldFailbackProbe" = "Failback Probe";
+"failoverGroupFieldHotSpare" = "Hot Spare";
+
+"failoverGroupMemberStatusActive" = "Active";
+"failoverGroupMemberStatusUnhealthy" = "Unhealthy";
+"failoverGroupMemberStatusSignInRequired" = "Wi-Fi Sign-in Required";
+"failoverGroupMemberStatusWaitingForNetwork" = "Waiting for Network";
+"failoverGroupMemberStatusHotSpareReady" = "Standby";
+"failoverGroupMemberStatusHotSpareWaiting" = "Connecting";
+"failoverGroupMemberStatusProbing" = "Probing";
+"failoverGroupMemberStatusIdle" = "Idle";
+
+"failoverGroupRoleFailover (%d)" = "Failover #%d";
+"failoverGroupRoleAndStatus (%1$@ and %2$@)" = "%1$@ · %2$@";
+
+"failoverGroupDeleteConfirmation (%@)" = "Are you sure you want to delete '%@'? This won't delete the individual tunnels.";
+
+"failoverGroupHealthCaptive" = "Captive portal — Wi-Fi requires sign-in";
+"failoverGroupHealthOffline" = "Offline — waiting to reconnect";
+"failoverGroupHealthBlockedDuration (%1$@ and %2$d)" = "%1$@ (%2$ds)";
+"failoverGroupHealthHolding (%d)" = "Unhealthy, holding %ds: no server reachable";
+"failoverGroupHealthConfirming (%d)" = "Unhealthy (%ds), confirming next server…";
+"failoverGroupHealthUnhealthy (%d)" = "Unhealthy (tx without rx for %ds)";
+"failoverGroupHealthHealthy" = "Healthy";
+"failoverGroupProbeBackgroundRunning" = "Background probe running...";
+"failoverGroupProbePrimary" = "Probing primary...";
+"failoverGroupHotSpareConnected (%1$@ and %2$d)" = "%1$@: Connected (%2$ds ago)";
+"failoverGroupHotSpareStale (%1$@ and %2$d)" = "%1$@: Stale handshake (%2$ds ago)";
+"failoverGroupHotSpareWaiting (%@)" = "%@: Waiting for handshake...";
+"failoverGroupHotSpareStarting (%@)" = "%@: Starting...";
+"failoverGroupConfigFallbackName (%d)" = "config #%d";
+
+"failoverGroupForceFailoverButtonTitle" = "Force Failover";
+"failoverGroupForceFailbackButtonTitle" = "Force Failback to Primary";
+
+"groupDetailConnectionDetailsTitle" = "Connection Details";
+
+// MARK: - Tunnel-in-tunnel edit (iOS)
+
+"titGroupNewTitle" = "New Tunnel-in-Tunnel";
+"titGroupEditTitle" = "Edit Tunnel-in-Tunnel";
+"titGroupSectionName" = "Name";
+"titGroupSectionOuter" = "Outer Tunnel (Server A)";
+"titGroupSectionInner" = "Inner Tunnel (Server B)";
+"titGroupSectionOnDemand" = "On-Demand Activation";
+"titGroupFooter" = "Traffic is encrypted first by the inner tunnel, then by the outer tunnel before reaching the network.";
+"titGroupNamePlaceholder" = "Group Name";
+"titGroupSelectTunnelPlaceholder" = "Select Tunnel...";
+"titGroupSelectTunnelTitle" = "Select Tunnel";
+"titGroupDeleteButtonTitle" = "Delete Tunnel-in-Tunnel Group";
+
+// MARK: - Captive portal sign-in (iOS)
+
+"captivePortalSignInTitle" = "Wi-Fi Sign-In";
+"captivePortalPausingTitle" = "Pausing VPN…";
+"captivePortalSignedInTitle" = "Signed In";
+
+// MARK: - Tunnels list group sections (iOS)
+
+"tunnelsListCreateFailoverGroup" = "Create Failover Group";
+"tunnelsListCreateTiTGroup" = "Create Tunnel-in-Tunnel";
+"tunnelsListSectionFailoverGroups" = "Failover Groups";
+"tunnelsListSectionTiTGroups" = "Tunnel-in-Tunnel";
+"tunnelsListSectionTunnels" = "Tunnels";
+
+"failoverGroupCellActive (%@)" = "Active: %@";
+
+// MARK: - Tunnel-in-tunnel detail
+
+"titDetailSectionChain" = "Tunnel Chain";
+"titDetailSectionOuter (%@)" = "Outer Tunnel (%@)";
+"titDetailSectionInner (%@)" = "Inner Tunnel (%@)";
+"titDetailRoleOuter" = "Outer (Server A)";
+"titDetailRoleInner" = "Inner (Server B)";
+
+// MARK: - Settings (iOS)
+
+"settingsSectionMapHome" = "Map Home";
+"settingsMapHomeAtLaunch" = "Open map at launch";
+
+// MARK: - Group validation
+
+"groupValidationNameEmpty" = "Name is empty";
+"groupValidationFailoverNeedsTwo" = "Failover group must have at least 2 tunnels";
+"groupValidationTiTSameTunnel" = "Outer and inner tunnels must be different";

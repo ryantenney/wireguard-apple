@@ -119,7 +119,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = isNewGroup ? "New Failover Group" : "Edit Failover Group"
+        title = isNewGroup ? tr("failoverGroupNewTitle") : tr("failoverGroupEditTitle")
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .save, target: self, action: #selector(saveTapped))
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancelTapped))
 
@@ -209,8 +209,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
     }
 
     private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        let alert = UIAlertController(title: tr("failoverGroupErrorTitle"), message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: tr("actionOK"), style: .default))
         present(alert, animated: true)
     }
 
@@ -244,15 +244,15 @@ class FailoverGroupEditTableViewController: UITableViewController {
         guard let sectionType = Section(rawValue: section) else { return nil }
         switch sectionType {
         case .name:
-            return "Name"
+            return tr("failoverGroupSectionName")
         case .tunnels:
-            return "Connections (in priority order)"
+            return tr("failoverGroupSectionConnections")
         case .addTunnel:
             return nil
         case .settings:
-            return "Failover Settings"
+            return tr("failoverGroupSectionSettings")
         case .onDemand:
-            return "On-Demand Activation"
+            return tr("failoverGroupSectionOnDemand")
         case .delete:
             return nil
         }
@@ -262,9 +262,9 @@ class FailoverGroupEditTableViewController: UITableViewController {
         guard let sectionType = Section(rawValue: section) else { return nil }
         switch sectionType {
         case .tunnels:
-            return "First tunnel is primary. Drag to reorder priority."
+            return tr("failoverGroupFooterConnections")
         case .settings:
-            return "Failover triggers when the tunnel is sending data but not receiving any for the configured timeout. With confirmation on, the next server must handshake first; if no server answers the outage is treated as your link being down and failover is held (up to the link-down hold). Adaptive sensitivity lengthens the timeout after such false alarms."
+            return tr("failoverGroupFooterSettings")
         default:
             return nil
         }
@@ -279,7 +279,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
         case .name:
             let cell: EditableTextCell = tableView.dequeueReusableCell(for: indexPath)
             cell.message = groupName
-            cell.placeholder = "Group Name"
+            cell.placeholder = tr("failoverGroupNamePlaceholder")
             cell.onValueBeingEdited = { [weak self] newValue in
                 self?.groupName = newValue
             }
@@ -289,14 +289,14 @@ class FailoverGroupEditTableViewController: UITableViewController {
             let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
             let name = selectedTunnelNames[indexPath.row]
             cell.textLabel?.text = name
-            cell.detailTextLabel?.text = indexPath.row == 0 ? "Primary" : "Fallback #\(indexPath.row)"
+            cell.detailTextLabel?.text = indexPath.row == 0 ? tr("failoverGroupRolePrimary") : tr(format: "failoverGroupRoleFallback (%d)", indexPath.row)
             cell.detailTextLabel?.textColor = indexPath.row == 0 ? .systemBlue : .secondaryLabel
             cell.showsReorderControl = true
             return cell
 
         case .addTunnel:
             let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
-            cell.buttonText = "Add Tunnel"
+            cell.buttonText = tr("failoverGroupAddTunnelButtonTitle")
             return cell
 
         case .settings:
@@ -304,25 +304,25 @@ class FailoverGroupEditTableViewController: UITableViewController {
             switch row {
             case .trafficTimeout:
                 let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-                cell.textLabel?.text = "Traffic Timeout"
-                cell.detailTextLabel?.text = "\(Int(trafficTimeout))s"
+                cell.textLabel?.text = tr("failoverGroupFieldTrafficTimeout")
+                cell.detailTextLabel?.text = tr(format: "failoverGroupValueSeconds (%d)", Int(trafficTimeout))
                 cell.accessoryType = .disclosureIndicator
                 return cell
             case .healthCheckInterval:
                 let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-                cell.textLabel?.text = "Health Check Interval"
-                cell.detailTextLabel?.text = "\(Int(healthCheckInterval))s"
+                cell.textLabel?.text = tr("failoverGroupFieldHealthCheckInterval")
+                cell.detailTextLabel?.text = tr(format: "failoverGroupValueSeconds (%d)", Int(healthCheckInterval))
                 cell.accessoryType = .disclosureIndicator
                 return cell
             case .failbackProbeInterval:
                 let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-                cell.textLabel?.text = "Failback Probe Interval"
-                cell.detailTextLabel?.text = "\(Int(failbackProbeInterval))s"
+                cell.textLabel?.text = tr("failoverGroupFieldFailbackProbeInterval")
+                cell.detailTextLabel?.text = tr(format: "failoverGroupValueSeconds (%d)", Int(failbackProbeInterval))
                 cell.accessoryType = .disclosureIndicator
                 return cell
             case .autoFailback:
                 let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
-                cell.message = "Auto Failback"
+                cell.message = tr("failoverGroupToggleAutoFailback")
                 cell.isOn = autoFailback
                 cell.onSwitchToggled = { [weak self] isOn in
                     self?.autoFailback = isOn
@@ -330,7 +330,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 return cell
             case .useBackgroundProbes:
                 let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
-                cell.message = "Background Probes"
+                cell.message = tr("failoverGroupToggleBackgroundProbes")
                 cell.isOn = useBackgroundProbes
                 cell.onSwitchToggled = { [weak self] isOn in
                     self?.useBackgroundProbes = isOn
@@ -338,7 +338,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 return cell
             case .hotSpare:
                 let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
-                cell.message = "Hot Spare"
+                cell.message = tr("failoverGroupToggleHotSpare")
                 cell.isOn = hotSpare
                 cell.onSwitchToggled = { [weak self] isOn in
                     self?.hotSpare = isOn
@@ -346,7 +346,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 return cell
             case .confirmBeforeFailover:
                 let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
-                cell.message = "Confirm Before Failover"
+                cell.message = tr("failoverGroupToggleConfirmBeforeFailover")
                 cell.isOn = confirmBeforeFailover
                 cell.onSwitchToggled = { [weak self] isOn in
                     self?.confirmBeforeFailover = isOn
@@ -354,19 +354,19 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 return cell
             case .confirmationTimeout:
                 let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-                cell.textLabel?.text = "Confirmation Timeout"
-                cell.detailTextLabel?.text = "\(Int(confirmationTimeout))s"
+                cell.textLabel?.text = tr("failoverGroupFieldConfirmationTimeout")
+                cell.detailTextLabel?.text = tr(format: "failoverGroupValueSeconds (%d)", Int(confirmationTimeout))
                 cell.accessoryType = .disclosureIndicator
                 return cell
             case .linkDownHoldTime:
                 let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-                cell.textLabel?.text = "Link-Down Hold"
-                cell.detailTextLabel?.text = linkDownHoldTime > 0 ? "\(Int(linkDownHoldTime))s" : "Forever"
+                cell.textLabel?.text = tr("failoverGroupFieldLinkDownHold")
+                cell.detailTextLabel?.text = linkDownHoldTime > 0 ? tr(format: "failoverGroupValueSeconds (%d)", Int(linkDownHoldTime)) : tr("failoverGroupValueForever")
                 cell.accessoryType = .disclosureIndicator
                 return cell
             case .adaptiveSensitivity:
                 let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
-                cell.message = "Adaptive Sensitivity"
+                cell.message = tr("failoverGroupToggleAdaptiveSensitivity")
                 cell.isOn = adaptiveSensitivity
                 cell.onSwitchToggled = { [weak self] isOn in
                     self?.adaptiveSensitivity = isOn
@@ -374,13 +374,13 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 return cell
             case .pathChangeGrace:
                 let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-                cell.textLabel?.text = "Path Change Grace"
-                cell.detailTextLabel?.text = "\(Int(pathChangeGrace))s"
+                cell.textLabel?.text = tr("failoverGroupFieldPathChangeGrace")
+                cell.detailTextLabel?.text = tr(format: "failoverGroupValueSeconds (%d)", Int(pathChangeGrace))
                 cell.accessoryType = .disclosureIndicator
                 return cell
             case .persistentKeepaliveToggle:
                 let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
-                cell.message = "Override Persistent Keepalive"
+                cell.message = tr("failoverGroupToggleKeepaliveOverride")
                 cell.isOn = persistentKeepaliveOverride != nil
                 cell.onSwitchToggled = { [weak self] isOn in
                     guard let self = self else { return }
@@ -396,8 +396,8 @@ class FailoverGroupEditTableViewController: UITableViewController {
                 return cell
             case .persistentKeepaliveValue:
                 let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-                cell.textLabel?.text = "Keepalive Interval"
-                cell.detailTextLabel?.text = "\(persistentKeepaliveOverride ?? 25)s"
+                cell.textLabel?.text = tr("failoverGroupFieldKeepaliveInterval")
+                cell.detailTextLabel?.text = tr(format: "failoverGroupValueSeconds (%d)", Int(persistentKeepaliveOverride ?? 25))
                 cell.accessoryType = .disclosureIndicator
                 return cell
             }
@@ -407,7 +407,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
 
         case .delete:
             let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
-            cell.buttonText = "Delete Failover Group"
+            cell.buttonText = tr("failoverGroupDeleteButtonTitle")
             cell.hasDestructiveAction = true
             return cell
         }
@@ -463,7 +463,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         guard let sectionType = Section(rawValue: indexPath.section), sectionType == .tunnels else { return nil }
-        let deleteAction = UIContextualAction(style: .destructive, title: "Remove") { [weak self] _, _, completionHandler in
+        let deleteAction = UIContextualAction(style: .destructive, title: tr("failoverGroupRemoveActionTitle")) { [weak self] _, _, completionHandler in
             guard let self = self else { return }
             self.selectedTunnelNames.remove(at: indexPath.row)
             tableView.deleteRows(at: [indexPath], with: .automatic)
@@ -536,22 +536,22 @@ class FailoverGroupEditTableViewController: UITableViewController {
         let currentValue: Int
         switch row {
         case .trafficTimeout:
-            title = "Traffic Timeout (seconds)"
+            title = tr("failoverGroupEditorTrafficTimeout")
             currentValue = Int(trafficTimeout)
         case .healthCheckInterval:
-            title = "Health Check Interval (seconds)"
+            title = tr("failoverGroupEditorHealthCheckInterval")
             currentValue = Int(healthCheckInterval)
         case .failbackProbeInterval:
-            title = "Failback Probe Interval (seconds)"
+            title = tr("failoverGroupEditorFailbackProbeInterval")
             currentValue = Int(failbackProbeInterval)
         case .confirmationTimeout:
-            title = "Confirmation Timeout (seconds)"
+            title = tr("failoverGroupEditorConfirmationTimeout")
             currentValue = Int(confirmationTimeout)
         case .linkDownHoldTime:
-            title = "Link-Down Hold (seconds, 0 = forever)"
+            title = tr("failoverGroupEditorLinkDownHold")
             currentValue = Int(linkDownHoldTime)
         case .pathChangeGrace:
-            title = "Path Change Grace (seconds)"
+            title = tr("failoverGroupEditorPathChangeGrace")
             currentValue = Int(pathChangeGrace)
         case .autoFailback, .useBackgroundProbes, .hotSpare, .confirmBeforeFailover, .adaptiveSensitivity, .persistentKeepaliveToggle, .persistentKeepaliveValue:
             return
@@ -562,7 +562,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
             textField.text = "\(currentValue)"
             textField.keyboardType = .numberPad
         }
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self, weak alert] _ in
+        alert.addAction(UIAlertAction(title: tr("actionOK"), style: .default) { [weak self, weak alert] _ in
             guard let self = self,
                   let text = alert?.textFields?.first?.text,
                   let value = Int(text), value >= 0, value > 0 || row == .linkDownHoldTime || row == .pathChangeGrace else { return }
@@ -584,7 +584,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
             }
             self.tableView.reloadSections(IndexSet(integer: Section.settings.rawValue), with: .none)
         })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: tr("actionCancel"), style: .cancel))
         present(alert, animated: true)
     }
 
@@ -592,19 +592,19 @@ class FailoverGroupEditTableViewController: UITableViewController {
 
     private func presentKeepaliveEditor() {
         let currentValue = Int(persistentKeepaliveOverride ?? 25)
-        let alert = UIAlertController(title: "Keepalive Interval (seconds)", message: nil, preferredStyle: .alert)
+        let alert = UIAlertController(title: tr("failoverGroupEditorKeepaliveInterval"), message: nil, preferredStyle: .alert)
         alert.addTextField { textField in
             textField.text = "\(currentValue)"
             textField.keyboardType = .numberPad
         }
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self, weak alert] _ in
+        alert.addAction(UIAlertAction(title: tr("actionOK"), style: .default) { [weak self, weak alert] _ in
             guard let self = self,
                   let text = alert?.textFields?.first?.text,
                   let value = UInt16(text), value > 0 else { return }
             self.persistentKeepaliveOverride = value
             self.tableView.reloadSections(IndexSet(integer: Section.settings.rawValue), with: .none)
         })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: tr("actionCancel"), style: .cancel))
         present(alert, animated: true)
     }
 
@@ -612,7 +612,7 @@ class FailoverGroupEditTableViewController: UITableViewController {
 
     private func confirmDelete() {
         guard let groupTunnel = groupTunnel else { return }
-        confirmGroupDelete(groupName: groupTunnel.name, title: "Delete Failover Group") { [weak self] in
+        confirmGroupDelete(groupName: groupTunnel.name, title: tr("failoverGroupDeleteButtonTitle")) { [weak self] in
             guard let self = self else { return }
             self.tunnelsManager.removeFailoverGroup(tunnel: groupTunnel) { [weak self] error in
                 guard let self = self else { return }
@@ -662,7 +662,7 @@ class TunnelPickerTableViewController: UITableViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Add Tunnels"
+        title = tr("failoverGroupAddTunnelsTitle")
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Add", style: .done, target: self, action: #selector(addTapped))
         updateAddButton()
     }
@@ -676,9 +676,9 @@ class TunnelPickerTableViewController: UITableViewController {
     private func updateAddButton() {
         navigationItem.rightBarButtonItem?.isEnabled = !selectedNames.isEmpty
         if !selectedNames.isEmpty {
-            navigationItem.rightBarButtonItem?.title = "Add (\(selectedNames.count))"
+            navigationItem.rightBarButtonItem?.title = tr(format: "failoverGroupAddCountButtonTitle (%d)", selectedNames.count)
         } else {
-            navigationItem.rightBarButtonItem?.title = "Add"
+            navigationItem.rightBarButtonItem?.title = tr("failoverGroupAddButtonTitle")
         }
     }
 
@@ -697,7 +697,7 @@ class TunnelPickerTableViewController: UITableViewController {
     }
 
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        return "Tap to select tunnels, then press Add."
+        return tr("failoverGroupAddTunnelsFooter")
     }
 
     // MARK: - Delegate

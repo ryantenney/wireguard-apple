@@ -167,7 +167,7 @@ class FailoverGroupCell: UITableViewCell {
         }
         let status = tunnel.status
         if status == .active || status == .activating, let activeName = activeConfigName {
-            activeConfigLabel.text = "Active: \(activeName)"
+            activeConfigLabel.text = tr(format: "failoverGroupCellActive (%@)", activeName)
             activeConfigLabel.isHidden = false
         } else {
             activeConfigLabel.isHidden = true

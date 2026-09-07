@@ -44,13 +44,13 @@ extension UITableViewController {
     func confirmGroupDelete(groupName: String, title: String, onConfirm: @escaping () -> Void) {
         let alert = UIAlertController(
             title: title,
-            message: "Are you sure you want to delete '\(groupName)'? This won't delete the individual tunnels.",
+            message: tr(format: "failoverGroupDeleteConfirmation (%@)", groupName),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
+        alert.addAction(UIAlertAction(title: tr("actionDelete"), style: .destructive) { _ in
             onConfirm()
         })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: tr("actionCancel"), style: .cancel))
         present(alert, animated: true)
     }
 }

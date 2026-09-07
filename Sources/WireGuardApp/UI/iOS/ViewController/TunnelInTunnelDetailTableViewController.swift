@@ -192,9 +192,9 @@ extension TunnelInTunnelDetailTableViewController {
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch sections[section] {
         case .status: return tr("tunnelSectionTitleStatus")
-        case .tunnels: return "Tunnel Chain"
-        case .outerStats: return "Outer Tunnel (\(outerTunnelName))"
-        case .innerStats: return "Inner Tunnel (\(innerTunnelName))"
+        case .tunnels: return tr("titDetailSectionChain")
+        case .outerStats: return tr(format: "titDetailSectionOuter (%@)", outerTunnelName)
+        case .innerStats: return tr(format: "titDetailSectionInner (%@)", innerTunnelName)
         case .onDemand: return tr("tunnelSectionTitleOnDemand")
         case .diagnostics: return nil
         case .delete: return nil
@@ -216,8 +216,8 @@ extension TunnelInTunnelDetailTableViewController {
         case .diagnostics:
             return diagnosticsCell(for: tableView, at: indexPath)
         case .delete:
-            return deleteCell(for: tableView, at: indexPath, title: "Delete Tunnel-in-Tunnel Group",
-                              message: "Are you sure you want to delete '\(tunnel.name)'? This won't delete the individual tunnels.") { [weak self] in
+            return deleteCell(for: tableView, at: indexPath, title: tr("titGroupDeleteButtonTitle"),
+                              message: tr(format: "failoverGroupDeleteConfirmation (%@)", tunnel.name)) { [weak self] in
                 guard let self = self else { return }
                 self.tunnelsManager.removeTiTGroup(tunnel: self.tunnel) { error in
                     if error != nil { print("Error removing TiT group: \(String(describing: error))") }
@@ -234,7 +234,7 @@ extension TunnelInTunnelDetailTableViewController {
         let cell = UITableViewCell(style: .value1, reuseIdentifier: "TiTMemberCell")
         let name = memberTunnelName(forRow: indexPath.row)
         cell.textLabel?.text = name
-        cell.detailTextLabel?.text = indexPath.row == 0 ? "Outer (Server A)" : "Inner (Server B)"
+        cell.detailTextLabel?.text = indexPath.row == 0 ? tr("titDetailRoleOuter") : tr("titDetailRoleInner")
         cell.detailTextLabel?.textColor = .secondaryLabel
         if isMemberTunnelAvailable(named: name) {
             cell.selectionStyle = .default

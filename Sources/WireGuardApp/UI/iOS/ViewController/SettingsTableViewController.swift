@@ -34,7 +34,7 @@ class SettingsTableViewController: UITableViewController {
             case .notifyOnFailover: return tr("settingsNotifyOnFailover")
             case .notifyOnCaptivePortal: return tr("settingsNotifyOnCaptivePortal")
             case .ipDiscovery: return tr("settingsIPDiscovery")
-            case .mapHomeAtLaunch: return "Open map at launch"
+            case .mapHomeAtLaunch: return tr("settingsMapHomeAtLaunch")
             }
         }
     }
@@ -215,7 +215,7 @@ extension SettingsTableViewController {
         case 2:
             return tr("settingsSectionTitleIPDiscovery")
         case 3:
-            return "Map Home"
+            return tr("settingsSectionMapHome")
         case 4:
             return tr("settingsSectionTitleExportConfigurations")
         case 5:

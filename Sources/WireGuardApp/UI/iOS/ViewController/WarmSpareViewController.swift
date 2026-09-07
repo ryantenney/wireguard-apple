@@ -77,7 +77,7 @@ class WarmSpareViewController: UITableViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Warm Spare"
+        title = tr("warmSpareTitle")
         tableView.estimatedRowHeight = 44
         tableView.rowHeight = UITableView.automaticDimension
         tableView.register(SwitchCell.self)
@@ -201,16 +201,16 @@ class WarmSpareViewController: UITableViewController {
         case .enable:
             return nil
         case .policy:
-            return "Warming Policy"
+            return tr("warmSpareSectionPolicy")
         case .thresholds:
-            return "Probing & Switching"
+            return tr("warmSpareSectionThresholds")
         case .status:
-            return "Status"
+            return tr("warmSpareSectionStatus")
         case .natTest:
-            return "Carrier NAT"
+            return tr("warmSpareSectionNatTest")
         #if FAILOVER_TESTING
         case .debug:
-            return "Debug"
+            return tr("warmSpareSectionDebug")
         #endif
         }
     }
@@ -219,15 +219,15 @@ class WarmSpareViewController: UITableViewController {
         switch sections[section] {
         case .enable:
             if !supportsWarmSpare {
-                return "Warm spare requires on-demand activation for any interface (Always On). With other on-demand modes the VPN isn't running while on Wi-Fi, so there is nothing to keep warm."
+                return tr("warmSpareFooterUnsupported")
             }
-            return "Keeps a ready-to-use connection on cellular while on Wi-Fi, so losing Wi-Fi switches paths in under a second without reconnecting. Note that Wi-Fi traffic always rides the tunnel in this mode. Changes apply the next time the tunnel starts."
+            return tr("warmSpareFooterEnable")
         case .policy:
             return settings.adaptiveWarming
-                ? "Cellular is kept warm only when Wi-Fi quality starts degrading. Uses less battery."
-                : "Cellular is kept warm whenever the tunnel is on Wi-Fi. Fastest failover, but each keepalive can wake the cellular radio."
+                ? tr("warmSpareFooterAdaptiveOn")
+                : tr("warmSpareFooterAdaptiveOff")
         case .thresholds:
-            return "The probe port must match the echo responder running on the WireGuard server, and must differ from the WireGuard port."
+            return tr("warmSpareFooterThresholds")
         case .natTest:
             return natTestFooter()
         default:
@@ -239,7 +239,7 @@ class WarmSpareViewController: UITableViewController {
         switch sections[indexPath.section] {
         case .enable:
             let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
-            cell.message = "Warm Spare"
+            cell.message = tr("warmSpareToggleEnable")
             cell.isOn = settings.enabled && supportsWarmSpare
             cell.isEnabled = supportsWarmSpare
             cell.onSwitchToggled = { [weak self] isOn in
@@ -252,7 +252,7 @@ class WarmSpareViewController: UITableViewController {
 
         case .policy:
             let cell: SwitchCell = tableView.dequeueReusableCell(for: indexPath)
-            cell.message = "Adaptive Warming"
+            cell.message = tr("warmSpareToggleAdaptive")
             cell.isOn = settings.adaptiveWarming
             cell.onSwitchToggled = { [weak self] isOn in
                 guard let self = self else { return }
@@ -269,20 +269,20 @@ class WarmSpareViewController: UITableViewController {
             guard let row = ThresholdRow(rawValue: indexPath.row) else { return cell }
             switch row {
             case .keepaliveInterval:
-                cell.textLabel?.text = "Keepalive Interval"
-                cell.detailTextLabel?.text = "\(Int(settings.warmKeepaliveInterval))s"
+                cell.textLabel?.text = tr("warmSpareFieldKeepaliveInterval")
+                cell.detailTextLabel?.text = tr(format: "warmSpareValueSeconds (%d)", Int(settings.warmKeepaliveInterval))
             case .probePort:
-                cell.textLabel?.text = "Probe Port"
+                cell.textLabel?.text = tr("warmSpareFieldProbePort")
                 cell.detailTextLabel?.text = "\(settings.probePort)"
             case .switchRtt:
-                cell.textLabel?.text = "Switch RTT Threshold"
-                cell.detailTextLabel?.text = "\(settings.switchRttMs) ms"
+                cell.textLabel?.text = tr("warmSpareFieldSwitchRtt")
+                cell.detailTextLabel?.text = tr(format: "warmSpareValueMilliseconds (%d)", settings.switchRttMs)
             case .switchLoss:
-                cell.textLabel?.text = "Switch Loss Threshold"
-                cell.detailTextLabel?.text = "\(settings.switchLossPct)%"
+                cell.textLabel?.text = tr("warmSpareFieldSwitchLoss")
+                cell.detailTextLabel?.text = tr(format: "warmSpareValuePercent (%d)", settings.switchLossPct)
             case .dwell:
-                cell.textLabel?.text = "Recovery Dwell"
-                cell.detailTextLabel?.text = "\(Int(settings.dwellSeconds))s"
+                cell.textLabel?.text = tr("warmSpareFieldRecoveryDwell")
+                cell.detailTextLabel?.text = tr(format: "warmSpareValueSeconds (%d)", Int(settings.dwellSeconds))
             }
             cell.accessoryType = .disclosureIndicator
             return cell
@@ -293,16 +293,16 @@ class WarmSpareViewController: UITableViewController {
             guard let row = StatusRow(rawValue: indexPath.row) else { return cell }
             switch row {
             case .controllerState:
-                cell.key = "State"
+                cell.key = tr("warmSpareKeyState")
                 cell.value = controllerStateDescription()
             case .activePath:
-                cell.key = "Active Path"
+                cell.key = tr("warmSpareKeyActivePath")
                 cell.value = activePathDescription()
             case .wifiQuality:
-                cell.key = "Default Path"
+                cell.key = tr("warmSpareKeyDefaultPath")
                 cell.value = qualityDescription(for: "primaryPath")
             case .cellularQuality:
-                cell.key = "Cellular"
+                cell.key = tr("warmSpareKeyCellular")
                 cell.value = qualityDescription(for: "cellularPath")
             }
             return cell
@@ -311,12 +311,12 @@ class WarmSpareViewController: UITableViewController {
             if indexPath.row == 0 {
                 let cell: KeyValueCell = tableView.dequeueReusableCell(for: indexPath)
                 cell.copyableGesture = false
-                cell.key = "Mapping"
+                cell.key = tr("warmSpareKeyMapping")
                 cell.value = natVerdictDescription()
                 return cell
             } else {
                 let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
-                cell.buttonText = "Run Carrier NAT Test"
+                cell.buttonText = tr("warmSpareRunNatTestButtonTitle")
                 cell.onTapped = { [weak self] in
                     self?.runNatTest()
                 }
@@ -328,13 +328,13 @@ class WarmSpareViewController: UITableViewController {
             let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
             switch indexPath.row {
             case 0:
-                cell.buttonText = "Force Cellular Path"
+                cell.buttonText = tr("warmSpareForceCellularButtonTitle")
                 cell.onTapped = { [weak self] in self?.debugForcePath(1) }
             case 1:
-                cell.buttonText = "Force Primary Path"
+                cell.buttonText = tr("warmSpareForcePrimaryButtonTitle")
                 cell.onTapped = { [weak self] in self?.debugForcePath(0) }
             default:
-                cell.buttonText = "Resume Automatic Control"
+                cell.buttonText = tr("warmSpareResumeAutomaticButtonTitle")
                 cell.onTapped = { [weak self] in self?.debugForcePath(nil) }
             }
             return cell
@@ -363,19 +363,19 @@ class WarmSpareViewController: UITableViewController {
         let currentValue: Int
         switch row {
         case .keepaliveInterval:
-            title = "Keepalive Interval (seconds)"
+            title = tr("warmSpareEditorKeepaliveInterval")
             currentValue = Int(settings.warmKeepaliveInterval)
         case .probePort:
-            title = "Probe Port"
+            title = tr("warmSpareEditorProbePort")
             currentValue = Int(settings.probePort)
         case .switchRtt:
-            title = "Switch RTT Threshold (ms)"
+            title = tr("warmSpareEditorSwitchRtt")
             currentValue = settings.switchRttMs
         case .switchLoss:
-            title = "Switch Loss Threshold (%)"
+            title = tr("warmSpareEditorSwitchLoss")
             currentValue = settings.switchLossPct
         case .dwell:
-            title = "Recovery Dwell (seconds)"
+            title = tr("warmSpareEditorRecoveryDwell")
             currentValue = Int(settings.dwellSeconds)
         }
 
@@ -384,7 +384,7 @@ class WarmSpareViewController: UITableViewController {
             textField.text = "\(currentValue)"
             textField.keyboardType = .numberPad
         }
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self, weak alert] _ in
+        alert.addAction(UIAlertAction(title: tr("actionOK"), style: .default) { [weak self, weak alert] _ in
             guard let self = self,
                   let text = alert?.textFields?.first?.text,
                   let value = Int(text), value > 0 else { return }
@@ -406,7 +406,7 @@ class WarmSpareViewController: UITableViewController {
                 self.tableView.reloadSections(IndexSet(integer: thresholdsSection), with: .none)
             }
         })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: tr("actionCancel"), style: .cancel))
         present(alert, animated: true)
     }
 
@@ -418,11 +418,11 @@ class WarmSpareViewController: UITableViewController {
                 guard let self = self else { return }
                 if !started {
                     let alert = UIAlertController(
-                        title: "Test Not Started",
-                        message: "The tunnel must be active with warm spare engaged and cellular available.",
+                        title: tr("warmSpareTestNotStartedTitle"),
+                        message: tr("warmSpareTestNotStartedMessage"),
                         preferredStyle: .alert
                     )
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    alert.addAction(UIAlertAction(title: tr("actionOK"), style: .default))
                     self.present(alert, animated: true)
                 }
                 // The verdict arrives via the status poll within a few seconds.
@@ -441,81 +441,81 @@ class WarmSpareViewController: UITableViewController {
     private func controllerStateDescription() -> String {
         switch status?["controllerState"] as? String {
         case "wifiActiveCellCold":
-            return "On Wi-Fi, cellular idle"
+            return tr("warmSpareStateWifiCellCold")
         case "wifiActiveCellWarm":
-            return "On Wi-Fi, cellular warm"
+            return tr("warmSpareStateWifiCellWarm")
         case "cellActive":
-            return "On cellular"
+            return tr("warmSpareStateCellActive")
         case "recovering":
             if let dwell = (status?["recoveringForSec"] as? NSNumber)?.doubleValue {
-                return "Returning to Wi-Fi (\(Int(dwell))s)"
+                return tr(format: "warmSpareStateRecovering (%d)", Int(dwell))
             }
-            return "Returning to Wi-Fi"
+            return tr("warmSpareStateRecoveringNoDwell")
         default:
-            return "Unknown"
+            return tr("warmSpareStateUnknown")
         }
     }
 
     private func activePathDescription() -> String {
         switch status?["activePath"] as? String {
         case "cellular":
-            return "Cellular"
+            return tr("warmSparePathCellular")
         case "primary":
-            return "Default (Wi-Fi)"
+            return tr("warmSparePathPrimary")
         default:
-            return "Unknown"
+            return tr("warmSpareStateUnknown")
         }
     }
 
     private func qualityDescription(for key: String) -> String {
         guard let path = status?[key] as? [String: Any] else { return "—" }
         let samples = (path["samples"] as? NSNumber)?.intValue ?? 0
-        guard samples > 0 else { return "No samples" }
+        guard samples > 0 else { return tr("warmSpareQualityNoSamples") }
         let rtt = (path["rttMs"] as? NSNumber)?.doubleValue ?? -1
         let loss = (path["lossPct"] as? NSNumber)?.intValue ?? -1
         var parts = [String]()
         if rtt >= 0 {
-            parts.append("\(Int(rtt)) ms")
+            parts.append(tr(format: "warmSpareQualityRtt (%d)", Int(rtt)))
         }
         if loss >= 0 {
-            parts.append("\(loss)% loss")
+            parts.append(tr(format: "warmSpareQualityLoss (%d)", loss))
         }
-        return parts.isEmpty ? "No replies" : parts.joined(separator: " · ")
+        return parts.isEmpty ? tr("warmSpareQualityNoReplies") : parts.joined(separator: " · ")
     }
 
     private func natVerdictDescription() -> String {
         guard let eim = status?["eim"] as? [String: Any],
               let verdict = eim["verdict"] as? String else {
-            return "Not tested"
+            return tr("warmSpareNatVerdictUntested")
         }
         switch verdict {
         case "eim":
-            return "Compatible (endpoint-independent)"
+            return tr("warmSpareNatVerdictEim")
         case "edm":
-            return "Endpoint-dependent"
+            return tr("warmSpareNatVerdictEdm")
         case "pending":
-            return "Testing…"
+            return tr("warmSpareNatVerdictPending")
         case "unreachable":
-            return "No reply"
+            return tr("warmSpareNatVerdictUnreachable")
         default:
-            return "Not tested"
+            return tr("warmSpareNatVerdictUntested")
         }
     }
 
     private func natTestFooter() -> String {
         guard let eim = status?["eim"] as? [String: Any],
               let verdict = eim["verdict"] as? String else {
-            return "Tests whether your carrier's NAT lets the warm connection be reused instantly on failover."
+            return tr("warmSpareNatFooterUntested")
         }
         switch verdict {
         case "eim":
-            return "Your carrier's NAT reuses the warm mapping — failover reuses the existing session with no extra delay."
+            return tr("warmSpareNatFooterEim")
         case "edm":
-            return "Your carrier's NAT assigns a new mapping per destination. Warm spare still helps (the radio and connection stay ready), but the first exchange after failover may take slightly longer."
+            return tr("warmSpareNatFooterEdm")
         case "unreachable":
-            return "No reply over cellular. Check that the echo responder is running on the server and that cellular data is available."
+            return tr("warmSpareNatFooterUnreachable")
         default:
-            return "Tests whether your carrier's NAT lets the warm connection be reused instantly on failover."
+            return tr("warmSpareNatFooterUntested")
         }
     }
 }

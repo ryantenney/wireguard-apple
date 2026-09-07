@@ -63,7 +63,7 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = isNewGroup ? "New Tunnel-in-Tunnel" : "Edit Tunnel-in-Tunnel"
+        title = isNewGroup ? tr("titGroupNewTitle") : tr("titGroupEditTitle")
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .save, target: self, action: #selector(saveTapped))
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancelTapped))
 
@@ -139,8 +139,8 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
     }
 
     private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        let alert = UIAlertController(title: tr("failoverGroupErrorTitle"), message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: tr("actionOK"), style: .default))
         present(alert, animated: true)
     }
 
@@ -172,13 +172,13 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
         guard let sectionType = Section(rawValue: section) else { return nil }
         switch sectionType {
         case .name:
-            return "Name"
+            return tr("titGroupSectionName")
         case .outerTunnel:
-            return "Outer Tunnel (Server A)"
+            return tr("titGroupSectionOuter")
         case .innerTunnel:
-            return "Inner Tunnel (Server B)"
+            return tr("titGroupSectionInner")
         case .onDemand:
-            return "On-Demand Activation"
+            return tr("titGroupSectionOnDemand")
         case .delete:
             return nil
         }
@@ -188,7 +188,7 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
         guard let sectionType = Section(rawValue: section) else { return nil }
         switch sectionType {
         case .outerTunnel:
-            return "Traffic is encrypted first by the inner tunnel, then by the outer tunnel before reaching the network."
+            return tr("titGroupFooter")
         default:
             return nil
         }
@@ -203,7 +203,7 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
         case .name:
             let cell: EditableTextCell = tableView.dequeueReusableCell(for: indexPath)
             cell.message = groupName
-            cell.placeholder = "Group Name"
+            cell.placeholder = tr("titGroupNamePlaceholder")
             cell.onValueBeingEdited = { [weak self] newValue in
                 self?.groupName = newValue
             }
@@ -211,14 +211,14 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
 
         case .outerTunnel:
             let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-            cell.textLabel?.text = outerTunnelName.isEmpty ? "Select Tunnel..." : outerTunnelName
+            cell.textLabel?.text = outerTunnelName.isEmpty ? tr("titGroupSelectTunnelPlaceholder") : outerTunnelName
             cell.textLabel?.textColor = outerTunnelName.isEmpty ? .placeholderText : .label
             cell.accessoryType = .disclosureIndicator
             return cell
 
         case .innerTunnel:
             let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-            cell.textLabel?.text = innerTunnelName.isEmpty ? "Select Tunnel..." : innerTunnelName
+            cell.textLabel?.text = innerTunnelName.isEmpty ? tr("titGroupSelectTunnelPlaceholder") : innerTunnelName
             cell.textLabel?.textColor = innerTunnelName.isEmpty ? .placeholderText : .label
             cell.accessoryType = .disclosureIndicator
             return cell
@@ -228,7 +228,7 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
 
         case .delete:
             let cell: ButtonCell = tableView.dequeueReusableCell(for: indexPath)
-            cell.buttonText = "Delete Tunnel-in-Tunnel Group"
+            cell.buttonText = tr("titGroupDeleteButtonTitle")
             cell.hasDestructiveAction = true
             return cell
         }
@@ -291,7 +291,7 @@ class TunnelInTunnelEditTableViewController: UITableViewController {
 
     private func confirmDelete() {
         guard let groupTunnel = groupTunnel else { return }
-        confirmGroupDelete(groupName: groupTunnel.name, title: "Delete Tunnel-in-Tunnel Group") { [weak self] in
+        confirmGroupDelete(groupName: groupTunnel.name, title: tr("titGroupDeleteButtonTitle")) { [weak self] in
             guard let self = self else { return }
             self.tunnelsManager.removeTiTGroup(tunnel: groupTunnel) { [weak self] error in
                 guard let self = self else { return }
@@ -340,7 +340,7 @@ class SingleTunnelPickerTableViewController: UITableViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Select Tunnel"
+        title = tr("titGroupSelectTunnelTitle")
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {

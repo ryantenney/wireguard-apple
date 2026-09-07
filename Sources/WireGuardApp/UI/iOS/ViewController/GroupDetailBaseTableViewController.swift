@@ -247,10 +247,10 @@ class GroupDetailBaseTableViewController: UITableViewController {
         cell.onTapped = { [weak self] in
             guard let self = self else { return }
             let alert = UIAlertController(title: deleteTitle, message: message, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
+            alert.addAction(UIAlertAction(title: tr("actionDelete"), style: .destructive) { _ in
                 removeAction()
             })
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            alert.addAction(UIAlertAction(title: tr("actionCancel"), style: .cancel))
             self.present(alert, animated: true)
         }
         return cell
@@ -274,7 +274,7 @@ class GroupDetailBaseTableViewController: UITableViewController {
 
     func diagnosticsCell(for tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell: ChevronCell = tableView.dequeueReusableCell(for: indexPath)
-        cell.message = "Connection Details"
+        cell.message = tr("groupDetailConnectionDetailsTitle")
         cell.detailMessage = ""
         return cell
     }
