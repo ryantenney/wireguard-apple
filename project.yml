@@ -239,6 +239,7 @@ targets:
           - WireGuardAdapter.swift
           - DNSResolver.swift
           - PacketTunnelSettingsGenerator.swift
+          - PathController.swift
           - "IPAddress+AddrInfo.swift"
           - "Array+ConcurrentMap.swift"
       - path: Sources/WireGuardKitC
@@ -377,6 +378,7 @@ targets:
           - WireGuardAdapter.swift
           - DNSResolver.swift
           - PacketTunnelSettingsGenerator.swift
+          - PathController.swift
           - "IPAddress+AddrInfo.swift"
           - "Array+ConcurrentMap.swift"
       - path: Sources/WireGuardKitC
