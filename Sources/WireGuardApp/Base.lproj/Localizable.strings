@@ -1069,3 +1069,5 @@
 "mapHomeLocationNotSet" = "Not set";
 "mapHomeMyLocationFooter" = "Used as the starting point of the connection arcs on the map. The automatic setting derives an approximate position from the device time zone; no location permission is used.";
 "mapHomeSearchPlaceholder" = "Search cities or countries";
+
+"tunnelDetailExportConfigButtonTitle" = "Export config";

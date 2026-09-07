@@ -217,7 +217,7 @@ struct TunnelDetailView: View {
             Button {
                 router.exportConfig(for: node)
             } label: {
-                Text("Export config")
+                Text(tr("tunnelDetailExportConfigButtonTitle"))
                     .font(.appSans(14, .medium))
                     .foregroundColor(Palette.primaryText)
                     .frame(maxWidth: .infinity)
@@ -231,7 +231,7 @@ struct TunnelDetailView: View {
             Button {
                 showDeleteConfirmation = true
             } label: {
-                Text("Delete")
+                Text(tr("actionDelete"))
                     .font(.appSans(14, .medium))
                     .foregroundColor(Palette.danger)
                     .frame(maxWidth: .infinity)
