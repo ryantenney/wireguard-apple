@@ -43,7 +43,7 @@ class LocationPickerViewController: UITableViewController {
         }
         searchController.searchResultsUpdater = self
         searchController.obscuresBackgroundDuringPresentation = false
-        searchController.searchBar.placeholder = "Search cities or countries"
+        searchController.searchBar.placeholder = tr("mapHomeSearchPlaceholder")
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
         definesPresentationContext = true

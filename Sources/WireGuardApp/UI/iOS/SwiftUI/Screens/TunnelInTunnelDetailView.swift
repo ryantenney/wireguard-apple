@@ -56,7 +56,7 @@ struct TunnelInTunnelDetailView: View {
             }
             .padding(.top, 8)
 
-            Badge(text: "STACKED · 2 LAYERS", color: stackedColor)
+            Badge(text: tr("titViewBadgeStacked"), color: stackedColor)
                 .padding(.top, 12)
                 .padding(.bottom, 20)
         }
@@ -66,12 +66,12 @@ struct TunnelInTunnelDetailView: View {
         switch node.status {
         case .active:
             if let since = node.connectedSince {
-                return "CONNECTED · \(WGFormat.duration(Date().timeIntervalSince(since)))"
+                return tr(format: "statusConnectedFor (%@)", WGFormat.duration(Date().timeIntervalSince(since)))
             }
-            return "CONNECTED"
-        case .activating, .reasserting, .restarting, .waiting: return "CONNECTING"
-        case .deactivating: return "DISCONNECTING"
-        case .inactive: return "INACTIVE"
+            return tr("statusConnected")
+        case .activating, .reasserting, .restarting, .waiting: return tr("statusConnecting")
+        case .deactivating: return tr("statusDisconnecting")
+        case .inactive: return tr("statusInactive")
         }
     }
 
@@ -80,14 +80,14 @@ struct TunnelInTunnelDetailView: View {
     private var pathSection: some View {
         let accent = theme.accent.color
         return VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(title: "Traffic Path")
+            SectionHeader(title: tr("titViewSectionTrafficPath"))
             VStack(spacing: 0) {
                 pathRow(isLast: false) {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(Palette.idle)
                         .frame(width: 14, height: 14)
                 } content: {
-                    Text("Your device")
+                    Text(tr("titViewYourDevice"))
                         .font(.appSans(14, .medium))
                         .foregroundColor(Palette.secondaryText)
                 }
@@ -99,7 +99,7 @@ struct TunnelInTunnelDetailView: View {
                         .frame(width: 16, height: 16)
                 } content: {
                     layerCard(name: node.titOuterName,
-                              badgeText: "CARRIER · L1",
+                              badgeText: tr("titViewBadgeCarrier"),
                               badgeFilled: false,
                               subtitle: node.titOuterEndpoint,
                               tinted: false)
@@ -112,7 +112,7 @@ struct TunnelInTunnelDetailView: View {
                         .overlay(Circle().strokeBorder(accent.opacity(0.35), lineWidth: 3).padding(-3))
                 } content: {
                     layerCard(name: node.titInnerName,
-                              badgeText: "EXIT · L2",
+                              badgeText: tr("titViewBadgeExit"),
                               badgeFilled: true,
                               subtitle: exitSubtitle,
                               tinted: true)
@@ -124,12 +124,12 @@ struct TunnelInTunnelDetailView: View {
                         .frame(width: 14, height: 14)
                 } content: {
                     HStack {
-                        Text("Internet")
+                        Text(tr("titViewInternet"))
                             .font(.appSans(14, .medium))
                             .foregroundColor(Palette.secondaryText)
                         Spacer()
                         if let ip = IPDiscoverySettings.discoveredIP, node.isActive {
-                            Text("apparent IP · \(ip)")
+                            Text(tr(format: "titViewApparentIP (%@)", ip))
                                 .font(.appMono(11))
                                 .foregroundColor(Palette.mutedText)
                         }
@@ -143,9 +143,9 @@ struct TunnelInTunnelDetailView: View {
     private var exitSubtitle: String {
         let inside = node.titOuterName.isEmpty ? "carrier" : node.titOuterName
         if let endpoint = node.titInnerEndpoint {
-            return "\(endpoint) · reached inside \(inside)"
+            return tr(format: "titViewEndpointReachedInside (%1$@ and %2$@)", endpoint, inside)
         }
-        return "reached inside \(inside)"
+        return tr(format: "titViewReachedInside (%@)", inside)
     }
 
     @ViewBuilder
@@ -203,8 +203,8 @@ struct TunnelInTunnelDetailView: View {
 
     private var layerCardsSection: some View {
         HStack(spacing: 10) {
-            layerStatCard(title: "Carrier", stats: node.titState?.outer)
-            layerStatCard(title: "Exit", stats: node.titState?.inner)
+            layerStatCard(title: tr("titViewLayerCarrier"), stats: node.titState?.outer)
+            layerStatCard(title: tr("titViewLayerExit"), stats: node.titState?.inner)
         }
     }
 
@@ -223,7 +223,7 @@ struct TunnelInTunnelDetailView: View {
                 }
                 .font(.appMono(14))
                 if let handshake = stats.lastHandshakeTime {
-                    Text("handshake \(WGFormat.handshakeAgo(handshake))")
+                    Text(tr(format: "titViewHandshake (%@)", WGFormat.handshakeAgo(handshake)))
                         .font(.appMono(10))
                         .foregroundColor(Palette.mutedText)
                 }

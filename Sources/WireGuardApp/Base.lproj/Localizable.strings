@@ -918,3 +918,154 @@
 "macConnectionDetailsCopyTooltip" = "Copy all connection details as text";
 "macConnectionDetailsTitle (%@)" = "%@ — Connection Details";
 "macConnectionDetailsStatus (%1$@ and %2$@)" = "%1$@ · updated %2$@";
+
+// MARK: - SwiftUI home (iOS)
+
+"homeTitleTunnels" = "Tunnels";
+"homeSectionOtherTunnels" = "Other Tunnels";
+"homeEmptyTitle" = "No tunnels yet";
+"homeEmptySubtitle" = "Add a tunnel to get started.";
+"homeAddTunnelButtonTitle" = "Add a Tunnel";
+"homeSubtitleStackedTunnel" = "stacked tunnel";
+"homeBadgeArmed" = "ARMED";
+"homeBadgeManual" = "MANUAL";
+"homeBadgeHotSpare" = "HOT SPARE";
+"homeBadgePaused" = "PAUSED";
+"homeStatLabelDownload" = "DOWNLOAD";
+"homeStatLabelUpload" = "UPLOAD";
+"homeGroupSubtitleActive (%@)" = "failover group · on %@";
+"homeGroupSubtitleMembers (%d)" = "failover group · %d tunnels";
+"homeManualOverrideTitle" = "Manual override";
+"homeManualOverrideSubtitle (%@)" = "%@ paused · on-demand rules stay live";
+"homeResumeButtonTitle" = "Resume";
+"homePausedGroupSubtitle (%d)" = "%d tunnels · ready to resume";
+
+"statusConnected" = "CONNECTED";
+"statusConnectedFor (%@)" = "CONNECTED · %@";
+"statusConnecting" = "CONNECTING";
+"statusDisconnecting" = "DISCONNECTING";
+"statusDisconnected" = "DISCONNECTED";
+"statusInactive" = "INACTIVE";
+
+"memberSubtitleCarryingTraffic" = "carrying traffic";
+"memberSubtitleCarryingBytes (%1$@ and %2$@)" = "carrying · ↓%1$@ ↑%2$@";
+"memberSubtitleCarryingTrafficBytes (%1$@ and %2$@)" = "carrying traffic · ↓%1$@ ↑%2$@";
+"memberSubtitleUnhealthy" = "unhealthy";
+"memberSubtitleUnhealthyTxNoRx" = "unhealthy · tx without rx";
+"memberSubtitleHotSpareWarm" = "hot spare · warm";
+"memberSubtitleHotSpareConnecting" = "hot spare · connecting";
+"memberSubtitleProbingPrimary" = "probing primary";
+"memberSubtitleStandby" = "standby";
+"memberSubtitleProbeHealthy" = "probe healthy";
+"memberSubtitleProbeHealthyWarm" = "probe healthy · session warm";
+"memberSubtitleIdle" = "idle";
+
+// MARK: - SwiftUI add tunnel sheet
+
+"addTunnelSheetTitle" = "Add a Tunnel";
+"addTunnelSheetSubtitle" = "Import an existing config or generate a fresh keypair.";
+"addTunnelOptionImportTitle" = "Import file or archive";
+"addTunnelOptionScanTitle" = "Scan QR code";
+"addTunnelOptionScanSubtitle" = "Point at a config QR from your server";
+"addTunnelOptionFailoverTitle" = "Create failover group";
+"addTunnelOptionFailoverSubtitle" = "Ordered tunnels with automatic failover";
+"addTunnelOptionTiTTitle" = "Create tunnel-in-tunnel";
+"addTunnelOptionTiTSubtitle" = "Route one tunnel through another";
+"addTunnelSeparatorOr" = "OR";
+"addTunnelPasteButtonTitle" = "Paste from clipboard";
+"addTunnelScratchTitle" = "Create from scratch";
+"addTunnelScratchSubtitle" = "Generate a keypair, add peers manually";
+"addTunnelClipboardInvalidMessage" = "The clipboard does not contain a valid WireGuard configuration.";
+
+// MARK: - SwiftUI failover group view
+
+"failoverViewHealthy" = "Healthy";
+"failoverViewUnhealthy" = "Unhealthy";
+"failoverViewArmedPathSuffix" = " · armed · path ";
+"failoverViewPathSuffix" = " · path ";
+"failoverViewArmedWaiting" = "Armed · waiting";
+"failoverViewDisconnected" = "Disconnected";
+"failoverViewSectionPriorityOrder" = "Priority Order";
+"failoverViewSectionBehavior" = "Failover Behavior";
+"failoverViewToggleBackgroundProbes" = "Background probes";
+"failoverViewToggleBackgroundProbesSubtitle" = "Test failback without disrupting traffic";
+"failoverViewToggleHotSpare" = "Hot spare";
+"failoverViewToggleHotSpareSubtitle" = "Keep next target warm · zero-handshake switch";
+"failoverViewSensitivity" = "Sensitivity";
+"failoverViewSectionRecent" = "Recent";
+"failoverViewLastFailover (%@)" = "%@  last failover event";
+
+// MARK: - SwiftUI tunnel detail
+
+"tunnelDetailSectionInterface" = "Interface";
+"tunnelDetailSectionPeer" = "Peer";
+"tunnelDetailSectionPeerNumbered (%d)" = "Peer %d";
+"tunnelDetailDeleteMessage" = "This permanently removes the tunnel configuration.";
+"tunnelDetailKeyPublicKey" = "Public key";
+"tunnelDetailKeyAddresses" = "Addresses";
+"tunnelDetailKeyDNS" = "DNS";
+"tunnelDetailKeyMTU" = "MTU";
+"tunnelDetailKeyListenPort" = "Listen port";
+"tunnelDetailKeyEndpoint" = "Endpoint";
+"tunnelDetailKeyAllowedIPs" = "Allowed IPs";
+"tunnelDetailKeyDataTransfer" = "Data transfer";
+"tunnelDetailHandshakeAgo (%@)" = "● handshake %@";
+"designComponentCopy" = "copy";
+
+// MARK: - SwiftUI tunnel-in-tunnel detail
+
+"titViewBadgeStacked" = "STACKED · 2 LAYERS";
+"titViewSectionTrafficPath" = "Traffic Path";
+"titViewYourDevice" = "Your device";
+"titViewInternet" = "Internet";
+"titViewBadgeCarrier" = "CARRIER · L1";
+"titViewBadgeExit" = "EXIT · L2";
+"titViewApparentIP (%@)" = "apparent IP · %@";
+"titViewReachedInside (%@)" = "reached inside %@";
+"titViewEndpointReachedInside (%1$@ and %2$@)" = "%1$@ · reached inside %2$@";
+"titViewLayerCarrier" = "Carrier";
+"titViewLayerExit" = "Exit";
+"titViewHandshake (%@)" = "handshake %@";
+
+// MARK: - SwiftUI settings
+
+"settingsViewTitle" = "Settings";
+"settingsViewTheme" = "Theme";
+"settingsViewAccentColor" = "Accent color";
+"settingsViewLivePreview" = "live preview";
+"settingsViewAccentFooter" = "Tints the connection hero, toggles, and active failover path across the app.";
+"settingsViewDefaultSensitivity" = "Default sensitivity";
+"settingsViewNotifyOnDisconnect" = "Notify on disconnect";
+"settingsViewNotifyOnFailover" = "Notify on failover";
+"settingsViewDiscoverPublicIP" = "Discover public IP";
+"settingsViewExportTunnels" = "Export tunnels";
+"settingsViewViewLog" = "View log";
+"settingsViewSessionHistory" = "Session history";
+"settingsViewVersion" = "Version";
+"settingsViewGoBackend" = "Go backend";
+
+// MARK: - Map Home
+
+"mapHomeMenuFailoverGroups" = "Failover Groups";
+"mapHomeMenuTiTGroups" = "Tunnel-in-Tunnel";
+"mapHomeMenuTunnels" = "Tunnels";
+"mapHomeMenuNoTunnels" = "No tunnels configured";
+"mapHomeMenuSetMyLocation" = "Set My Location…";
+"mapHomeMenuEndpointLocations" = "Endpoint Locations…";
+"mapHomeMenuOpenAtLaunch" = "Open at Launch";
+"mapHomeStatusProtected" = "You are protected";
+"mapHomeStatusWaiting" = "Waiting…";
+"mapHomeStatusConnecting" = "Connecting…";
+"mapHomeStatusUnprotected" = "You are unprotected";
+"mapHomeLocationApproximate (%@)" = "%@ · approximate";
+"mapHomeNoTunnelsTitle" = "No tunnels";
+"mapHomeNoTunnelsDetail" = "Add a tunnel from the tunnels list first";
+"mapHomeSetLocationTitle (%@)" = "Set location for “%@”";
+"mapHomeSetLocationTitleMore (%1$@ and %2$d)" = "%1$@ (+%2$d more)";
+"mapHomeMyLocationTitle" = "My Location";
+"mapHomeAutomaticTimeZone" = "Automatic (Time Zone)";
+"mapHomeNoLocation" = "No Location";
+"mapHomeLocationsTitle" = "Locations";
+"mapHomeLocationNotSet" = "Not set";
+"mapHomeMyLocationFooter" = "Used as the starting point of the connection arcs on the map. The automatic setting derives an approximate position from the device time zone; no location permission is used.";
+"mapHomeSearchPlaceholder" = "Search cities or countries";

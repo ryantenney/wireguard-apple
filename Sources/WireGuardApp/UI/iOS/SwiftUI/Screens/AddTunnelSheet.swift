@@ -22,10 +22,10 @@ struct AddTunnelSheet: View {
                         .padding(.top, 11)
                         .padding(.bottom, 18)
 
-                    Text("Add a Tunnel")
+                    Text(tr("addTunnelSheetTitle"))
                         .font(.appSans(26, .bold))
                         .foregroundColor(Palette.primaryText)
-                    Text("Import an existing config or generate a fresh keypair.")
+                    Text(tr("addTunnelSheetSubtitle"))
                         .font(.appSans(14))
                         .foregroundColor(Palette.secondaryText)
                         .padding(.top, 4)
@@ -33,19 +33,19 @@ struct AddTunnelSheet: View {
 
                     VStack(spacing: 12) {
                         primaryOption
-                        OptionRow(icon: "doc.text", title: "Import file or archive",
+                        OptionRow(icon: "doc.text", title: tr("addTunnelOptionImportTitle"),
                                   subtitle: ".conf · .zip", mono: true) { router.importFile() }
-                        OptionRow(icon: "qrcode.viewfinder", title: "Scan QR code",
-                                  subtitle: "Point at a config QR from your server") { router.scanQRCode() }
-                        OptionRow(icon: "arrow.triangle.branch", title: "Create failover group",
-                                  subtitle: "Ordered tunnels with automatic failover") { router.createFailoverGroup() }
-                        OptionRow(icon: "square.stack.3d.up", title: "Create tunnel-in-tunnel",
-                                  subtitle: "Route one tunnel through another") { router.createTiTGroup() }
+                        OptionRow(icon: "qrcode.viewfinder", title: tr("addTunnelOptionScanTitle"),
+                                  subtitle: tr("addTunnelOptionScanSubtitle")) { router.scanQRCode() }
+                        OptionRow(icon: "arrow.triangle.branch", title: tr("addTunnelOptionFailoverTitle"),
+                                  subtitle: tr("addTunnelOptionFailoverSubtitle")) { router.createFailoverGroup() }
+                        OptionRow(icon: "square.stack.3d.up", title: tr("addTunnelOptionTiTTitle"),
+                                  subtitle: tr("addTunnelOptionTiTSubtitle")) { router.createTiTGroup() }
                     }
 
                     HStack(spacing: 10) {
                         Rectangle().fill(Palette.separator).frame(height: 1)
-                        Text("OR").font(.appMono(11)).foregroundColor(Palette.faintText)
+                        Text(tr("addTunnelSeparatorOr")).font(.appMono(11)).foregroundColor(Palette.faintText)
                         Rectangle().fill(Palette.separator).frame(height: 1)
                     }
                     .padding(.vertical, 22)
@@ -53,7 +53,7 @@ struct AddTunnelSheet: View {
                     Button {
                         router.pasteFromClipboard()
                     } label: {
-                        Text("Paste from clipboard")
+                        Text(tr("addTunnelPasteButtonTitle"))
                             .font(.appSans(14, .medium))
                             .foregroundColor(theme.accent.color)
                             .frame(maxWidth: .infinity)
@@ -78,10 +78,10 @@ struct AddTunnelSheet: View {
                     .frame(width: 46, height: 46)
                     .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(accent))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Create from scratch")
+                    Text(tr("addTunnelScratchTitle"))
                         .font(.appSans(16, .semibold))
                         .foregroundColor(Palette.primaryText)
-                    Text("Generate a keypair, add peers manually")
+                    Text(tr("addTunnelScratchSubtitle"))
                         .font(.appSans(12))
                         .foregroundColor(Palette.secondaryText)
                 }

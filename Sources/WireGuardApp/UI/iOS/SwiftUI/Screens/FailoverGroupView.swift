@@ -50,13 +50,13 @@ struct FailoverGroupView: View {
             if node.isActive {
                 let healthy = node.failoverState?.isHealthy ?? true
                 let path = node.failoverState?.activeConfig ?? node.failoverMemberNames.first ?? "—"
-                (Text(healthy ? "Healthy" : "Unhealthy")
-                    + Text(node.isOnDemandEnabled ? " · armed · path " : " · path ")
+                (Text(healthy ? tr("failoverViewHealthy") : tr("failoverViewUnhealthy"))
+                    + Text(node.isOnDemandEnabled ? tr("failoverViewArmedPathSuffix") : tr("failoverViewPathSuffix"))
                     + Text(path).foregroundColor(accent))
                     .font(.appMono(12))
                     .foregroundColor(Palette.secondaryText)
             } else {
-                Text(node.switchIsOn ? "Armed · waiting" : "Disconnected")
+                Text(node.switchIsOn ? tr("failoverViewArmedWaiting") : tr("failoverViewDisconnected"))
                     .font(.appMono(12))
                     .foregroundColor(Palette.secondaryText)
             }
@@ -72,7 +72,7 @@ struct FailoverGroupView: View {
 
     private var prioritySection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(title: "Priority Order")
+            SectionHeader(title: tr("failoverViewSectionPriorityOrder"))
             VStack(spacing: 10) {
                 let names = node.failoverMemberNames
                 ForEach(Array(names.enumerated()), id: \.offset) { index, name in
@@ -88,20 +88,20 @@ struct FailoverGroupView: View {
     private var behaviorSection: some View {
         let accent = theme.accent.color
         return VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(title: "Failover Behavior")
+            SectionHeader(title: tr("failoverViewSectionBehavior"))
             GroupedCard {
-                ToggleRow(title: "Background probes",
-                          subtitle: "Test failback without disrupting traffic",
+                ToggleRow(title: tr("failoverViewToggleBackgroundProbes"),
+                          subtitle: tr("failoverViewToggleBackgroundProbesSubtitle"),
                           isOn: backgroundProbesBinding,
                           accent: accent)
                 RowDivider()
-                ToggleRow(title: "Hot spare",
-                          subtitle: "Keep next target warm · zero-handshake switch",
+                ToggleRow(title: tr("failoverViewToggleHotSpare"),
+                          subtitle: tr("failoverViewToggleHotSpareSubtitle"),
                           isOn: hotSpareBinding,
                           accent: accent)
                 RowDivider()
                 VStack(alignment: .leading, spacing: 11) {
-                    Text("Sensitivity")
+                    Text(tr("failoverViewSensitivity"))
                         .font(.appSans(14))
                         .foregroundColor(Palette.primaryText)
                     SensitivityPicker(selection: sensitivityBinding, accent: accent)
@@ -147,10 +147,10 @@ struct FailoverGroupView: View {
     @ViewBuilder private var recentSection: some View {
         if let lastSwitch = node.failoverState?.lastSwitchTime {
             VStack(alignment: .leading, spacing: 0) {
-                SectionHeader(title: "Recent")
+                SectionHeader(title: tr("failoverViewSectionRecent"))
                 HStack(spacing: 8) {
                     Text("●").foregroundColor(Palette.warning)
-                    Text("\(WGFormat.clockTime(lastSwitch))  last failover event")
+                    Text(tr(format: "failoverViewLastFailover (%@)", WGFormat.clockTime(lastSwitch)))
                         .foregroundColor(Palette.secondaryText)
                 }
                 .font(.appMono(11))
@@ -182,7 +182,7 @@ private struct PriorityCard: View {
                         .font(.appSans(15, isActive ? .semibold : .medium))
                         .foregroundColor(Palette.primaryText)
                     if showsHotSpareBadge {
-                        Badge(text: "HOT SPARE", color: Palette.warning)
+                        Badge(text: tr("homeBadgeHotSpare"), color: Palette.warning)
                     }
                 }
                 Text(descriptor(for: health))
@@ -227,15 +227,15 @@ private struct PriorityCard: View {
         switch health {
         case .carrying:
             if let state = node.failoverState, let rx = state.rxBytes, let tx = state.txBytes {
-                return "carrying traffic · ↓\(WGFormat.compactBytes(rx)) ↑\(WGFormat.compactBytes(tx))"
+                return tr(format: "memberSubtitleCarryingTrafficBytes (%1$@ and %2$@)", WGFormat.compactBytes(rx), WGFormat.compactBytes(tx))
             }
-            return "carrying traffic"
-        case .unhealthy: return "unhealthy · tx without rx"
-        case .hotSpareReady: return "probe healthy · session warm"
-        case .hotSpareWaiting: return "hot spare · connecting"
-        case .probing: return "probing primary"
-        case .standby: return "probe healthy"
-        case .idle: return "idle"
+            return tr("memberSubtitleCarryingTraffic")
+        case .unhealthy: return tr("memberSubtitleUnhealthyTxNoRx")
+        case .hotSpareReady: return tr("memberSubtitleProbeHealthyWarm")
+        case .hotSpareWaiting: return tr("memberSubtitleHotSpareConnecting")
+        case .probing: return tr("memberSubtitleProbingPrimary")
+        case .standby: return tr("memberSubtitleProbeHealthy")
+        case .idle: return tr("memberSubtitleIdle")
         }
     }
 }

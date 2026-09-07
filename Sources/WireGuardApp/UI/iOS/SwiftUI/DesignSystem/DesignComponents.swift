@@ -189,7 +189,7 @@ struct KeyValueRow: View {
                 .foregroundColor(valueColor)
                 .multilineTextAlignment(.trailing)
             if let copyAccent = copyAccent {
-                Text("copy")
+                Text(tr("designComponentCopy"))
                     .font(.appMono(11))
                     .foregroundColor(copyAccent)
             }

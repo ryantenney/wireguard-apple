@@ -39,7 +39,7 @@ struct TunnelsHomeView: View {
 
     private var header: some View {
         HStack {
-            Text("Tunnels")
+            Text(tr("homeTitleTunnels"))
                 .font(.appSans(32, .bold))
                 .foregroundColor(Palette.primaryText)
             Spacer()
@@ -121,7 +121,7 @@ struct TunnelsHomeView: View {
                 GroupedCard {
                     ForEach(Array(store.titGroups.enumerated()), id: \.element.id) { index, node in
                         if index > 0 { RowDivider() }
-                        OtherTunnelRow(node: node, subtitle: "stacked tunnel")
+                        OtherTunnelRow(node: node, subtitle: tr("homeSubtitleStackedTunnel"))
                     }
                 }
             }
@@ -130,7 +130,7 @@ struct TunnelsHomeView: View {
 
     @ViewBuilder private var otherTunnelsSection: some View {
         if !otherTunnels.isEmpty {
-            section(group == nil && plainHero == nil ? "Tunnels" : "Other Tunnels") {
+            section(group == nil && plainHero == nil ? tr("homeTitleTunnels") : tr("homeSectionOtherTunnels")) {
                 GroupedCard {
                     ForEach(Array(otherTunnels.enumerated()), id: \.element.id) { index, node in
                         if index > 0 { RowDivider() }
@@ -143,16 +143,16 @@ struct TunnelsHomeView: View {
 
     private var emptyState: some View {
         VStack(spacing: 14) {
-            Text("No tunnels yet")
+            Text(tr("homeEmptyTitle"))
                 .font(.appSans(18, .semibold))
                 .foregroundColor(Palette.primaryText)
-            Text("Add a tunnel to get started.")
+            Text(tr("homeEmptySubtitle"))
                 .font(.appSans(14))
                 .foregroundColor(Palette.secondaryText)
             Button {
                 router.presentAddTunnel()
             } label: {
-                Text("Add a Tunnel")
+                Text(tr("homeAddTunnelButtonTitle"))
                     .font(.appSans(15, .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 22)
@@ -202,7 +202,7 @@ private struct GroupHeroCard: View {
                             .font(.appSans(22, .semibold))
                             .foregroundColor(Palette.primaryText)
                         if group.hasOnDemandRules && group.isOnDemandEnabled {
-                            Badge(text: "ARMED", color: Palette.healthy)
+                            Badge(text: tr("homeBadgeArmed"), color: Palette.healthy)
                         }
                     }
                     Text(subtitle)
@@ -226,8 +226,8 @@ private struct GroupHeroCard: View {
                 HStack(spacing: 26) {
                     let download = WGFormat.throughput(bytesPerSecond: group.downloadBytesPerSecond)
                     let upload = WGFormat.throughput(bytesPerSecond: group.uploadBytesPerSecond)
-                    ThroughputStat(label: "DOWNLOAD", arrow: "↓", value: download.value, unit: download.unit)
-                    ThroughputStat(label: "UPLOAD", arrow: "↑", value: upload.value, unit: upload.unit)
+                    ThroughputStat(label: tr("homeStatLabelDownload"), arrow: "↓", value: download.value, unit: download.unit)
+                    ThroughputStat(label: tr("homeStatLabelUpload"), arrow: "↑", value: upload.value, unit: upload.unit)
                     Spacer()
                 }
             }
@@ -243,9 +243,9 @@ private struct GroupHeroCard: View {
 
     private var subtitle: String {
         if group.isActive, let active = group.failoverState?.activeConfig ?? group.failoverMemberNames.first {
-            return "failover group · on \(active)"
+            return tr(format: "homeGroupSubtitleActive (%@)", active)
         }
-        return "failover group · \(group.failoverMemberNames.count) tunnels"
+        return tr(format: "homeGroupSubtitleMembers (%d)", group.failoverMemberNames.count)
     }
 }
 
@@ -265,7 +265,7 @@ private struct TunnelHeroCard: View {
                 ConnectionStatusLabel(status: node.status, accent: accent)
                 Spacer()
                 if isManual {
-                    Badge(text: "MANUAL", color: Palette.manualAmber)
+                    Badge(text: tr("homeBadgeManual"), color: Palette.manualAmber)
                 } else if node.isActive, let since = node.connectedSince {
                     Text(WGFormat.duration(Date().timeIntervalSince(since)))
                         .font(.appMono(13))
@@ -302,8 +302,8 @@ private struct TunnelHeroCard: View {
                 HStack(spacing: 26) {
                     let download = WGFormat.throughput(bytesPerSecond: node.downloadBytesPerSecond)
                     let upload = WGFormat.throughput(bytesPerSecond: node.uploadBytesPerSecond)
-                    ThroughputStat(label: "DOWNLOAD", arrow: "↓", value: download.value, unit: download.unit)
-                    ThroughputStat(label: "UPLOAD", arrow: "↑", value: upload.value, unit: upload.unit)
+                    ThroughputStat(label: tr("homeStatLabelDownload"), arrow: "↓", value: download.value, unit: download.unit)
+                    ThroughputStat(label: tr("homeStatLabelUpload"), arrow: "↑", value: upload.value, unit: upload.unit)
                     Spacer()
                 }
             }
@@ -334,10 +334,10 @@ private struct ManualOverrideBanner: View {
                 .frame(width: 26, height: 26)
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Palette.manualAmber.opacity(0.18)))
             VStack(alignment: .leading, spacing: 1) {
-                Text("Manual override")
+                Text(tr("homeManualOverrideTitle"))
                     .font(.appSans(13, .semibold))
                     .foregroundColor(Palette.primaryText)
-                Text("\(group.name) paused · on-demand rules stay live")
+                Text(tr(format: "homeManualOverrideSubtitle (%@)", group.name))
                     .font(.appSans(11))
                     .foregroundColor(Palette.secondaryText)
             }
@@ -345,7 +345,7 @@ private struct ManualOverrideBanner: View {
             Button {
                 store.resumeFailoverGroup(group)
             } label: {
-                Text("Resume")
+                Text(tr("homeResumeButtonTitle"))
                     .font(.appMono(11, .semibold))
                     .foregroundColor(.black)
                     .padding(.horizontal, 11)
@@ -400,7 +400,7 @@ private struct MemberRow: View {
                     .font(.appSans(15, .medium))
                     .foregroundColor(Palette.primaryText)
                 if showsHotSpareBadge {
-                    Badge(text: "HOT SPARE", color: Palette.warning)
+                    Badge(text: tr("homeBadgeHotSpare"), color: Palette.warning)
                 }
             }
             Spacer(minLength: 8)
@@ -437,15 +437,15 @@ private struct MemberRow: View {
         switch health {
         case .carrying:
             if let state = group.failoverState, let rx = state.rxBytes, let tx = state.txBytes {
-                return "carrying · ↓\(WGFormat.compactBytes(rx)) ↑\(WGFormat.compactBytes(tx))"
+                return tr(format: "memberSubtitleCarryingBytes (%1$@ and %2$@)", WGFormat.compactBytes(rx), WGFormat.compactBytes(tx))
             }
-            return "carrying traffic"
-        case .unhealthy: return "unhealthy"
-        case .hotSpareReady: return "hot spare · warm"
-        case .hotSpareWaiting: return "hot spare · connecting"
-        case .probing: return "probing primary"
-        case .standby: return "standby"
-        case .idle: return "idle"
+            return tr("memberSubtitleCarryingTraffic")
+        case .unhealthy: return tr("memberSubtitleUnhealthy")
+        case .hotSpareReady: return tr("memberSubtitleHotSpareWarm")
+        case .hotSpareWaiting: return tr("memberSubtitleHotSpareConnecting")
+        case .probing: return tr("memberSubtitleProbingPrimary")
+        case .standby: return tr("memberSubtitleStandby")
+        case .idle: return tr("memberSubtitleIdle")
         }
     }
 
@@ -472,11 +472,11 @@ private struct PausedGroupCard: View {
                         Text(group.name)
                             .font(.appSans(16, .semibold))
                             .foregroundColor(Palette.primaryText)
-                        Badge(text: "PAUSED", color: Palette.mutedText, filled: false)
+                        Badge(text: tr("homeBadgePaused"), color: Palette.mutedText, filled: false)
                     }
                     HStack(spacing: 9) {
                         SolidDot(color: Palette.idle, size: 9)
-                        Text("\(group.failoverMemberNames.count) tunnels · ready to resume")
+                        Text(tr(format: "homePausedGroupSubtitle (%d)", group.failoverMemberNames.count))
                             .font(.appSans(13))
                             .foregroundColor(Palette.secondaryText)
                     }
@@ -547,10 +547,10 @@ struct ConnectionStatusLabel: View {
 
     private var text: String {
         switch status {
-        case .active: return "CONNECTED"
-        case .activating, .reasserting, .restarting, .waiting: return "CONNECTING"
-        case .deactivating: return "DISCONNECTING"
-        case .inactive: return "DISCONNECTED"
+        case .active: return tr("statusConnected")
+        case .activating, .reasserting, .restarting, .waiting: return tr("statusConnecting")
+        case .deactivating: return tr("statusDisconnecting")
+        case .inactive: return tr("statusDisconnected")
         }
     }
 

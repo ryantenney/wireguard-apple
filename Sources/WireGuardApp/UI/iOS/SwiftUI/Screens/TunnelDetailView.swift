@@ -38,10 +38,10 @@ struct TunnelDetailView: View {
         .onAppear { store.startPolling(node) }
         .onDisappear { store.stopPolling(node) }
         .alert("Delete \(node.name)?", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) { router.delete(node) }
+            Button(tr("actionCancel"), role: .cancel) {}
+            Button(tr("actionDelete"), role: .destructive) { router.delete(node) }
         } message: {
-            Text("This permanently removes the tunnel configuration.")
+            Text(tr("tunnelDetailDeleteMessage"))
         }
     }
 
@@ -83,12 +83,12 @@ struct TunnelDetailView: View {
         switch node.status {
         case .active:
             if let since = node.connectedSince {
-                return "CONNECTED · \(WGFormat.duration(Date().timeIntervalSince(since)))"
+                return tr(format: "statusConnectedFor (%@)", WGFormat.duration(Date().timeIntervalSince(since)))
             }
-            return "CONNECTED"
-        case .activating, .reasserting, .restarting, .waiting: return "CONNECTING"
-        case .deactivating: return "DISCONNECTING"
-        case .inactive: return "INACTIVE"
+            return tr("statusConnected")
+        case .activating, .reasserting, .restarting, .waiting: return tr("statusConnecting")
+        case .deactivating: return tr("statusDisconnecting")
+        case .inactive: return tr("statusInactive")
         }
     }
 
@@ -96,7 +96,7 @@ struct TunnelDetailView: View {
 
     private func interfaceSection(_ interface: InterfaceConfiguration) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(title: "Interface")
+            SectionHeader(title: tr("tunnelDetailSectionInterface"))
             GroupedCard {
                 let rows = interfaceRows(interface)
                 ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
@@ -120,19 +120,19 @@ struct TunnelDetailView: View {
     private func interfaceRows(_ interface: InterfaceConfiguration) -> [Row] {
         var rows = [Row]()
         let publicKey = interface.privateKey.publicKey.base64Key
-        rows.append(Row(key: "Public key", value: WGFormat.abbreviatedKey(publicKey), copyable: true, copyValue: publicKey))
+        rows.append(Row(key: tr("tunnelDetailKeyPublicKey"), value: WGFormat.abbreviatedKey(publicKey), copyable: true, copyValue: publicKey))
         if !interface.addresses.isEmpty {
-            rows.append(Row(key: "Addresses", value: interface.addresses.map { $0.stringRepresentation }.joined(separator: ", ")))
+            rows.append(Row(key: tr("tunnelDetailKeyAddresses"), value: interface.addresses.map { $0.stringRepresentation }.joined(separator: ", ")))
         }
         let dns = interface.dns.map { $0.stringRepresentation } + interface.dnsSearch
         if !dns.isEmpty {
-            rows.append(Row(key: "DNS", value: dns.joined(separator: ", ")))
+            rows.append(Row(key: tr("tunnelDetailKeyDNS"), value: dns.joined(separator: ", ")))
         }
         if let mtu = interface.mtu {
-            rows.append(Row(key: "MTU", value: String(mtu)))
+            rows.append(Row(key: tr("tunnelDetailKeyMTU"), value: String(mtu)))
         }
         if let listenPort = interface.listenPort {
-            rows.append(Row(key: "Listen port", value: String(listenPort)))
+            rows.append(Row(key: tr("tunnelDetailKeyListenPort"), value: String(listenPort)))
         }
         return rows
     }
@@ -142,10 +142,10 @@ struct TunnelDetailView: View {
     private func peerSection(_ peer: PeerConfiguration, number: Int, total: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                SectionHeader(title: total > 1 ? "Peer \(number + 1)" : "Peer")
+                SectionHeader(title: total > 1 ? tr(format: "tunnelDetailSectionPeerNumbered (%d)", number + 1) : tr("tunnelDetailSectionPeer"))
                 Spacer()
                 if let handshake = peer.lastHandshakeTime {
-                    Text("● handshake \(WGFormat.handshakeAgo(handshake))")
+                    Text(tr(format: "tunnelDetailHandshakeAgo (%@)", WGFormat.handshakeAgo(handshake)))
                         .font(.appMono(11))
                         .foregroundColor(Palette.healthy)
                         .padding(.bottom, 9)
@@ -179,22 +179,22 @@ struct TunnelDetailView: View {
     private func peerRows(_ peer: PeerConfiguration) -> [PeerRow] {
         var rows = [PeerRow]()
         let publicKey = peer.publicKey.base64Key
-        rows.append(PeerRow(key: "Public key", value: WGFormat.abbreviatedKey(publicKey), copyable: true, copyValue: publicKey))
+        rows.append(PeerRow(key: tr("tunnelDetailKeyPublicKey"), value: WGFormat.abbreviatedKey(publicKey), copyable: true, copyValue: publicKey))
         if let endpoint = peer.endpoint?.stringRepresentation {
-            rows.append(PeerRow(key: "Endpoint", value: endpoint))
+            rows.append(PeerRow(key: tr("tunnelDetailKeyEndpoint"), value: endpoint))
         }
         if !peer.allowedIPs.isEmpty {
-            rows.append(PeerRow(key: "Allowed IPs", value: peer.allowedIPs.map { $0.stringRepresentation }.joined(separator: ", ")))
+            rows.append(PeerRow(key: tr("tunnelDetailKeyAllowedIPs"), value: peer.allowedIPs.map { $0.stringRepresentation }.joined(separator: ", ")))
         }
         if peer.rxBytes != nil || peer.txBytes != nil {
-            rows.append(PeerRow(key: "Data transfer", isDataTransfer: true))
+            rows.append(PeerRow(key: tr("tunnelDetailKeyDataTransfer"), isDataTransfer: true))
         }
         return rows
     }
 
     private func dataTransferRow(_ peer: PeerConfiguration) -> some View {
         HStack(spacing: 12) {
-            Text("Data transfer")
+            Text(tr("tunnelDetailKeyDataTransfer"))
                 .font(.appSans(14))
                 .foregroundColor(Palette.secondaryText)
             Spacer(minLength: 12)

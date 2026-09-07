@@ -26,7 +26,7 @@ class EndpointLocationsViewController: UITableViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Locations"
+        title = tr("mapHomeLocationsTitle")
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self,
                                                             action: #selector(doneTapped))
         tableView.estimatedRowHeight = 44
@@ -62,7 +62,7 @@ class EndpointLocationsViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch Section(rawValue: section) {
         case .myLocation:
-            return "My Location"
+            return tr("mapHomeMyLocationTitle")
         case .tunnels:
             return tunnelsManager.numberOfTunnels() > 0 ? "Tunnel Endpoints" : nil
         case nil:
@@ -73,7 +73,7 @@ class EndpointLocationsViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         switch Section(rawValue: section) {
         case .myLocation:
-            return "Used as the starting point of the connection arcs on the map. The automatic setting derives an approximate position from the device time zone; no location permission is used."
+            return tr("mapHomeMyLocationFooter")
         case .tunnels:
             return tunnelsManager.numberOfTunnels() > 0
                 ? "Assign each tunnel the city of its WireGuard endpoint to place it on the map."
@@ -90,11 +90,11 @@ class EndpointLocationsViewController: UITableViewController {
 
         switch Section(rawValue: indexPath.section) {
         case .myLocation:
-            cell.textLabel?.text = "My Location"
+            cell.textLabel?.text = tr("mapHomeMyLocationTitle")
             if let override = EndpointLocationStore.userLocationOverride {
                 cell.detailTextLabel?.text = override.flaggedDisplayName
             } else {
-                cell.detailTextLabel?.text = "Automatic (Time Zone)"
+                cell.detailTextLabel?.text = tr("mapHomeAutomaticTimeZone")
             }
         case .tunnels:
             let tunnel = tunnelsManager.tunnel(at: indexPath.row)
@@ -102,7 +102,7 @@ class EndpointLocationsViewController: UITableViewController {
             if let location = EndpointLocationStore.location(forTunnelNamed: tunnel.name) {
                 cell.detailTextLabel?.text = location.flaggedDisplayName
             } else {
-                cell.detailTextLabel?.text = "Not set"
+                cell.detailTextLabel?.text = tr("mapHomeLocationNotSet")
             }
         case nil:
             break
@@ -115,15 +115,15 @@ class EndpointLocationsViewController: UITableViewController {
 
         switch Section(rawValue: indexPath.section) {
         case .myLocation:
-            let pickerVC = LocationPickerViewController(clearOptionTitle: "Automatic (Time Zone)") { city in
+            let pickerVC = LocationPickerViewController(clearOptionTitle: tr("mapHomeAutomaticTimeZone")) { city in
                 EndpointLocationStore.userLocationOverride = city.map { EndpointLocation(city: $0) }
             }
-            pickerVC.title = "My Location"
+            pickerVC.title = tr("mapHomeMyLocationTitle")
             navigationController?.pushViewController(pickerVC, animated: true)
         case .tunnels:
             let tunnel = tunnelsManager.tunnel(at: indexPath.row)
             let tunnelName = tunnel.name
-            let pickerVC = LocationPickerViewController(clearOptionTitle: "No Location") { city in
+            let pickerVC = LocationPickerViewController(clearOptionTitle: tr("mapHomeNoLocation")) { city in
                 EndpointLocationStore.setLocation(city.map { EndpointLocation(city: $0) }, forTunnelNamed: tunnelName)
             }
             pickerVC.title = tunnelName

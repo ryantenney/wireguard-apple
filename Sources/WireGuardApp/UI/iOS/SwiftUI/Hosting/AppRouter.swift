@@ -185,7 +185,7 @@ final class AppRouter: NSObject, ObservableObject {
             }
         } catch {
             showSimpleError(title: tr("alertBadConfigImportTitle"),
-                            message: "The clipboard does not contain a valid WireGuard configuration.")
+                            message: tr("addTunnelClipboardInvalidMessage"))
         }
     }
 

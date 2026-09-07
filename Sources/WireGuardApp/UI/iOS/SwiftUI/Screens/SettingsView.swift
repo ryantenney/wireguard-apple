@@ -21,7 +21,7 @@ struct SettingsView: View {
             Palette.screenBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Settings")
+                    Text(tr("settingsViewTitle"))
                         .font(.appSans(32, .bold))
                         .foregroundColor(Palette.primaryText)
                         .padding(.top, 8)
@@ -49,16 +49,16 @@ struct SettingsView: View {
                         Button(option.displayName) { theme.appearance = option }
                     }
                 } label: {
-                    settingsValueRow(title: "Theme", value: theme.appearance.displayName)
+                    settingsValueRow(title: tr("settingsViewTheme"), value: theme.appearance.displayName)
                 }
                 RowDivider()
                 VStack(alignment: .leading, spacing: 13) {
                     HStack {
-                        Text("Accent color")
+                        Text(tr("settingsViewAccentColor"))
                             .font(.appSans(15))
                             .foregroundColor(Palette.primaryText)
                         Spacer()
-                        Text("live preview")
+                        Text(tr("settingsViewLivePreview"))
                             .font(.appMono(11))
                             .foregroundColor(theme.accent.color)
                     }
@@ -68,7 +68,7 @@ struct SettingsView: View {
                         }
                         Spacer()
                     }
-                    Text("Tints the connection hero, toggles, and active failover path across the app.")
+                    Text(tr("settingsViewAccentFooter"))
                         .font(.appSans(11))
                         .foregroundColor(Palette.mutedText)
                 }
@@ -95,7 +95,7 @@ struct SettingsView: View {
     private var failoverDefaultsSection: some View {
         section("Failover Defaults") {
             GroupedCard {
-                ToggleRow(title: "Background probes",
+                ToggleRow(title: tr("failoverViewToggleBackgroundProbes"),
                           isOn: Binding(
                             get: { backgroundProbeDefault },
                             set: { backgroundProbeDefault = $0; FailoverDefaults.useBackgroundProbes = $0 }),
@@ -109,7 +109,7 @@ struct SettingsView: View {
                         }
                     }
                 } label: {
-                    settingsValueRow(title: "Default sensitivity", value: defaultSensitivity.displayName)
+                    settingsValueRow(title: tr("settingsViewDefaultSensitivity"), value: defaultSensitivity.displayName)
                 }
             }
         }
@@ -120,19 +120,19 @@ struct SettingsView: View {
     private var notificationsSection: some View {
         section("Notifications") {
             GroupedCard {
-                ToggleRow(title: "Notify on disconnect",
+                ToggleRow(title: tr("settingsViewNotifyOnDisconnect"),
                           isOn: Binding(
                             get: { notifyOnDisconnect },
                             set: { handleNotificationToggle($0, isDisconnect: true) }),
                           accent: theme.accent.color)
                 RowDivider()
-                ToggleRow(title: "Notify on failover",
+                ToggleRow(title: tr("settingsViewNotifyOnFailover"),
                           isOn: Binding(
                             get: { notifyOnFailover },
                             set: { handleNotificationToggle($0, isDisconnect: false) }),
                           accent: theme.accent.color)
                 RowDivider()
-                ToggleRow(title: "Discover public IP",
+                ToggleRow(title: tr("settingsViewDiscoverPublicIP"),
                           isOn: Binding(
                             get: { ipDiscovery },
                             set: { ipDiscovery = $0; IPDiscoverySettings.isEnabled = $0 }),
@@ -185,11 +185,11 @@ struct SettingsView: View {
     private var dataAndLogsSection: some View {
         section("Data & Logs") {
             GroupedCard {
-                DisclosureRow(title: "Export tunnels", value: ".zip") { router.exportAllConfigurations() }
+                DisclosureRow(title: tr("settingsViewExportTunnels"), value: ".zip") { router.exportAllConfigurations() }
                 RowDivider()
-                DisclosureRow(title: "View log") { router.viewLog() }
+                DisclosureRow(title: tr("settingsViewViewLog")) { router.viewLog() }
                 RowDivider()
-                DisclosureRow(title: "Session history") { router.showSessionHistory() }
+                DisclosureRow(title: tr("settingsViewSessionHistory")) { router.showSessionHistory() }
             }
         }
     }
@@ -199,9 +199,9 @@ struct SettingsView: View {
     private var aboutSection: some View {
         section("About") {
             GroupedCard {
-                KeyValueRow(key: "Version", value: appVersion)
+                KeyValueRow(key: tr("settingsViewVersion"), value: appVersion)
                 RowDivider()
-                KeyValueRow(key: "Go backend", value: WIREGUARD_GO_VERSION)
+                KeyValueRow(key: tr("settingsViewGoBackend"), value: WIREGUARD_GO_VERSION)
             }
         }
     }

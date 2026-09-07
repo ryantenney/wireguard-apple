@@ -425,36 +425,36 @@ class MapHomeViewController: UIViewController {
         let failoverActions = actions(for: tunnelsManager.failoverGroupTunnels,
                                       image: UIImage(systemName: "arrow.triangle.2.circlepath"))
         if !failoverActions.isEmpty {
-            sections.append(UIMenu(title: "Failover Groups", options: .displayInline, children: failoverActions))
+            sections.append(UIMenu(title: tr("mapHomeMenuFailoverGroups"), options: .displayInline, children: failoverActions))
         }
 
         let titActions = actions(for: tunnelsManager.titGroupTunnels,
                                  image: UIImage(systemName: "smallcircle.filled.circle"))
         if !titActions.isEmpty {
-            sections.append(UIMenu(title: "Tunnel-in-Tunnel", options: .displayInline, children: titActions))
+            sections.append(UIMenu(title: tr("mapHomeMenuTiTGroups"), options: .displayInline, children: titActions))
         }
 
         let tunnelActions = actions(for: tunnelsManager.tunnels, image: UIImage(systemName: "lock.shield"))
         if !tunnelActions.isEmpty {
-            sections.append(UIMenu(title: "Tunnels", options: .displayInline, children: tunnelActions))
+            sections.append(UIMenu(title: tr("mapHomeMenuTunnels"), options: .displayInline, children: tunnelActions))
         }
 
         if sections.isEmpty {
-            sections.append(UIAction(title: "No tunnels configured", attributes: .disabled) { _ in })
+            sections.append(UIAction(title: tr("mapHomeMenuNoTunnels"), attributes: .disabled) { _ in })
         }
         return sections
     }
 
     private func buildOptionsMenuItems() -> [UIMenuElement] {
-        let myLocation = UIAction(title: "Set My Location…",
+        let myLocation = UIAction(title: tr("mapHomeMenuSetMyLocation"),
                                   image: UIImage(systemName: "location")) { [weak self] _ in
             self?.presentMyLocationPicker()
         }
-        let endpointLocations = UIAction(title: "Endpoint Locations…",
+        let endpointLocations = UIAction(title: tr("mapHomeMenuEndpointLocations"),
                                          image: UIImage(systemName: "mappin.and.ellipse")) { [weak self] _ in
             self?.presentEndpointLocationsList()
         }
-        let showAtLaunch = UIAction(title: "Open at Launch",
+        let showAtLaunch = UIAction(title: tr("mapHomeMenuOpenAtLaunch"),
                                     image: UIImage(systemName: "house"),
                                     state: MapHomeSettings.isShownAtLaunch ? .on : .off) { _ in
             MapHomeSettings.isShownAtLaunch.toggle()
@@ -551,15 +551,15 @@ class MapHomeViewController: UIViewController {
         case .protected:
             tint = MapPalette.protectedTint
             statusIconView.image = UIImage(systemName: "lock.fill")
-            statusTitleLabel.text = "You are protected"
+            statusTitleLabel.text = tr("mapHomeStatusProtected")
         case .connecting:
             tint = MapPalette.connectingTint
             statusIconView.image = UIImage(systemName: "lock.rotation")
-            statusTitleLabel.text = selectedTunnel?.status == .waiting ? "Waiting…" : "Connecting…"
+            statusTitleLabel.text = selectedTunnel?.status == .waiting ? tr("mapHomeStatusWaiting") : tr("mapHomeStatusConnecting")
         case .unprotected:
             tint = MapPalette.unprotectedTint
             statusIconView.image = UIImage(systemName: "lock.open.fill")
-            statusTitleLabel.text = "You are unprotected"
+            statusTitleLabel.text = tr("mapHomeStatusUnprotected")
         }
         statusIconView.tintColor = tint
         statusIconContainer.backgroundColor = tint.withAlphaComponent(0.16)
@@ -586,7 +586,7 @@ class MapHomeViewController: UIViewController {
             return parts.joined(separator: " · ")
         }
         let userLocation = UserLocationProvider.current()
-        return userLocation.isManualOverride ? userLocation.label : "\(userLocation.label) · approximate"
+        return userLocation.isManualOverride ? userLocation.label : tr(format: "mapHomeLocationApproximate (%@)", userLocation.label)
     }
 
     /// The location traffic exits from: the active failover member, the inner
@@ -612,8 +612,8 @@ class MapHomeViewController: UIViewController {
     private func updateCard() {
         guard let tunnel = selectedTunnel else {
             kindIconView.image = UIImage(systemName: "lock.shield")
-            selectionNameLabel.text = "No tunnels"
-            selectionDetailLabel.text = "Add a tunnel from the tunnels list first"
+            selectionNameLabel.text = tr("mapHomeNoTunnelsTitle")
+            selectionDetailLabel.text = tr("mapHomeNoTunnelsDetail")
             connectButton.setTitle("Connect", for: .normal)
             connectButton.isEnabled = false
             connectButton.backgroundColor = UIColor(white: 1, alpha: 0.1)
@@ -710,9 +710,9 @@ class MapHomeViewController: UIViewController {
             unlocatedChipButton.isHidden = true
             return
         }
-        var title = "Set location for “\(firstName)”"
+        var title = tr(format: "mapHomeSetLocationTitle (%@)", firstName)
         if unlocatedNames.count > 1 {
-            title += " (+\(unlocatedNames.count - 1) more)"
+            title = tr(format: "mapHomeSetLocationTitleMore (%1$@ and %2$d)", title, unlocatedNames.count - 1)
         }
         unlocatedChipButton.setTitle(title, for: .normal)
         unlocatedChipButton.isHidden = false
@@ -763,7 +763,7 @@ class MapHomeViewController: UIViewController {
     // MARK: - Pickers
 
     private func presentMyLocationPicker() {
-        presentLocationPicker(title: "My Location", clearOptionTitle: "Automatic (Time Zone)") { city in
+        presentLocationPicker(title: tr("mapHomeMyLocationTitle"), clearOptionTitle: tr("mapHomeAutomaticTimeZone")) { city in
             EndpointLocationStore.userLocationOverride = city.map { EndpointLocation(city: $0) }
         }
     }
