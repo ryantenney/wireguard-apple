@@ -30,7 +30,7 @@ class TunnelInTunnelEditViewController: NSViewController {
 
     let outerLabel: NSTextField = {
         let label = NSTextField()
-        label.stringValue = "Outer Tunnel (Server A):"
+        label.stringValue = tr("macTiTGroupOuterLabel")
         label.isEditable = false
         label.isSelectable = false
         label.isBordered = false
@@ -46,7 +46,7 @@ class TunnelInTunnelEditViewController: NSViewController {
 
     let innerLabel: NSTextField = {
         let label = NSTextField()
-        label.stringValue = "Inner Tunnel (Server B):"
+        label.stringValue = tr("macTiTGroupInnerLabel")
         label.isEditable = false
         label.isSelectable = false
         label.isBordered = false
@@ -82,7 +82,7 @@ class TunnelInTunnelEditViewController: NSViewController {
 
     let deleteButton: NSButton = {
         let button = NSButton()
-        button.title = "Delete Tunnel-in-Tunnel Group"
+        button.title = tr("titGroupDeleteButtonTitle")
         button.setButtonType(.momentaryPushIn)
         button.bezelStyle = .rounded
         button.contentTintColor = .systemRed
@@ -117,7 +117,7 @@ class TunnelInTunnelEditViewController: NSViewController {
 
         // Populate outer popup
         outerPopUp.removeAllItems()
-        outerPopUp.addItem(withTitle: "Select Tunnel...")
+        outerPopUp.addItem(withTitle: tr("titGroupSelectTunnelPlaceholder"))
         outerPopUp.addItems(withTitles: availableNames)
         if !outerTunnelName.isEmpty {
             outerPopUp.selectItem(withTitle: outerTunnelName)
@@ -125,7 +125,7 @@ class TunnelInTunnelEditViewController: NSViewController {
 
         // Populate inner popup
         innerPopUp.removeAllItems()
-        innerPopUp.addItem(withTitle: "Select Tunnel...")
+        innerPopUp.addItem(withTitle: tr("titGroupSelectTunnelPlaceholder"))
         innerPopUp.addItems(withTitles: availableNames)
         if !innerTunnelName.isEmpty {
             innerPopUp.selectItem(withTitle: innerTunnelName)
@@ -158,7 +158,7 @@ class TunnelInTunnelEditViewController: NSViewController {
 
         // Footer text
         let footerLabel = NSTextField()
-        footerLabel.stringValue = "Traffic is encrypted first by the inner tunnel, then by the outer tunnel."
+        footerLabel.stringValue = tr("macTiTGroupFooter")
         footerLabel.isEditable = false
         footerLabel.isSelectable = false
         footerLabel.isBordered = false
@@ -211,16 +211,16 @@ class TunnelInTunnelEditViewController: NSViewController {
         let selectedOuter = outerPopUp.titleOfSelectedItem ?? ""
         let selectedInner = innerPopUp.titleOfSelectedItem ?? ""
 
-        guard selectedOuter != "Select Tunnel..." && !selectedOuter.isEmpty else {
-            ErrorPresenter.showErrorAlert(title: "Please select an outer tunnel.", message: "", from: self)
+        guard selectedOuter != tr("titGroupSelectTunnelPlaceholder") && !selectedOuter.isEmpty else {
+            ErrorPresenter.showErrorAlert(title: tr("macTiTGroupErrorNoOuter"), message: "", from: self)
             return
         }
-        guard selectedInner != "Select Tunnel..." && !selectedInner.isEmpty else {
-            ErrorPresenter.showErrorAlert(title: "Please select an inner tunnel.", message: "", from: self)
+        guard selectedInner != tr("titGroupSelectTunnelPlaceholder") && !selectedInner.isEmpty else {
+            ErrorPresenter.showErrorAlert(title: tr("macTiTGroupErrorNoInner"), message: "", from: self)
             return
         }
         guard selectedOuter != selectedInner else {
-            ErrorPresenter.showErrorAlert(title: "Outer and inner tunnels must be different.", message: "", from: self)
+            ErrorPresenter.showErrorAlert(title: tr("macTiTGroupErrorSameTunnel"), message: "", from: self)
             return
         }
 
@@ -274,10 +274,10 @@ class TunnelInTunnelEditViewController: NSViewController {
     @objc func handleDeleteAction() {
         guard let tunnel = tunnel, let window = view.window else { return }
         let alert = NSAlert()
-        alert.messageText = "Delete Tunnel-in-Tunnel Group"
-        alert.informativeText = "Are you sure you want to delete '\(tunnel.name)'? This won't delete the individual tunnels."
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = tr("titGroupDeleteButtonTitle")
+        alert.informativeText = tr(format: "failoverGroupDeleteConfirmation (%@)", tunnel.name)
+        alert.addButton(withTitle: tr("actionDelete"))
+        alert.addButton(withTitle: tr("actionCancel"))
         alert.buttons.first?.hasDestructiveAction = true
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self = self, response == .alertFirstButtonReturn else { return }

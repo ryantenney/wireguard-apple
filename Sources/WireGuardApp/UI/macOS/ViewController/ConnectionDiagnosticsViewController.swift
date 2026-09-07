@@ -75,9 +75,9 @@ class ConnectionDiagnosticsViewController: NSViewController {
 
     private let copyButton: NSButton = {
         let button = NSButton()
-        button.title = "Copy"
+        button.title = tr("macConnectionDetailsCopyButtonTitle")
         button.bezelStyle = .rounded
-        button.toolTip = "Copy all connection details as text"
+        button.toolTip = tr("macConnectionDetailsCopyTooltip")
         return button
     }()
 
@@ -126,7 +126,7 @@ class ConnectionDiagnosticsViewController: NSViewController {
         clipView.documentView = tableView
         scrollView.contentView = clipView
 
-        titleLabel.stringValue = "\(tunnel.name) — Connection Details"
+        titleLabel.stringValue = tr(format: "macConnectionDetailsTitle (%@)", tunnel.name)
 
         let headerRow = NSStackView(views: [titleLabel, statusLabel])
         headerRow.orientation = .vertical
@@ -225,7 +225,7 @@ class ConnectionDiagnosticsViewController: NSViewController {
 
         guard isViewLoaded else { return }
         if let receivedAt = model.receivedAt {
-            statusLabel.stringValue = "\(ConnectionDiagnosticsModel.statusDescription(for: tunnel)) · updated \(FormattingHelpers.prettyTime(receivedAt))"
+            statusLabel.stringValue = tr(format: "macConnectionDetailsStatus (%1$@ and %2$@)", ConnectionDiagnosticsModel.statusDescription(for: tunnel), FormattingHelpers.prettyTime(receivedAt))
         } else {
             statusLabel.stringValue = ConnectionDiagnosticsModel.statusDescription(for: tunnel)
         }

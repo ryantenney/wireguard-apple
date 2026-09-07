@@ -41,7 +41,7 @@ class FailoverGroupEditViewController: NSViewController {
 
     let connectionsLabel: NSTextField = {
         let label = NSTextField()
-        label.stringValue = "Connections (in priority order):"
+        label.stringValue = tr("macFailoverGroupConnectionsLabel")
         label.isEditable = false
         label.isSelectable = false
         label.isBordered = false
@@ -110,7 +110,7 @@ class FailoverGroupEditViewController: NSViewController {
 
     let autoFailbackCheckbox: NSButton = {
         let checkbox = NSButton()
-        checkbox.title = "Auto Failback"
+        checkbox.title = tr("failoverGroupToggleAutoFailback")
         checkbox.setButtonType(.switch)
         checkbox.state = .on
         return checkbox
@@ -123,7 +123,7 @@ class FailoverGroupEditViewController: NSViewController {
 
     let useBackgroundProbesCheckbox: NSButton = {
         let checkbox = NSButton()
-        checkbox.title = "Background Probes"
+        checkbox.title = tr("failoverGroupToggleBackgroundProbes")
         checkbox.setButtonType(.switch)
         checkbox.state = .on
         return checkbox
@@ -136,7 +136,7 @@ class FailoverGroupEditViewController: NSViewController {
 
     let hotSpareCheckbox: NSButton = {
         let checkbox = NSButton()
-        checkbox.title = "Hot Spare"
+        checkbox.title = tr("failoverGroupToggleHotSpare")
         checkbox.setButtonType(.switch)
         checkbox.state = .off
         return checkbox
@@ -149,7 +149,7 @@ class FailoverGroupEditViewController: NSViewController {
 
     let persistentKeepaliveCheckbox: NSButton = {
         let checkbox = NSButton()
-        checkbox.title = "Override Persistent Keepalive"
+        checkbox.title = tr("failoverGroupToggleKeepaliveOverride")
         checkbox.setButtonType(.switch)
         checkbox.state = .off
         return checkbox
@@ -157,10 +157,10 @@ class FailoverGroupEditViewController: NSViewController {
 
     let confirmBeforeFailoverCheckbox: NSButton = {
         let checkbox = NSButton()
-        checkbox.title = "Confirm Before Failover"
+        checkbox.title = tr("failoverGroupToggleConfirmBeforeFailover")
         checkbox.setButtonType(.switch)
         checkbox.state = .on
-        checkbox.toolTip = "Require the next server to handshake before switching; hold if no server answers (likely a link outage)."
+        checkbox.toolTip = tr("macFailoverGroupConfirmTooltip")
         return checkbox
     }()
 
@@ -178,16 +178,16 @@ class FailoverGroupEditViewController: NSViewController {
     let linkDownHoldTimeRow: EditableKeyValueRow = {
         let row = EditableKeyValueRow()
         row.key = tr(format: "macFieldKey (%@)", "Link-Down Hold (s)")
-        row.valueLabel.toolTip = "How long to hold failover while no server is reachable. 0 = forever."
+        row.valueLabel.toolTip = tr("macFailoverGroupLinkDownHoldTooltip")
         return row
     }()
 
     let adaptiveSensitivityCheckbox: NSButton = {
         let checkbox = NSButton()
-        checkbox.title = "Adaptive Sensitivity"
+        checkbox.title = tr("failoverGroupToggleAdaptiveSensitivity")
         checkbox.setButtonType(.switch)
         checkbox.state = .on
-        checkbox.toolTip = "Lengthen the traffic timeout after outages that turned out to be the link, relaxing again after a quiet half hour."
+        checkbox.toolTip = tr("macFailoverGroupAdaptiveTooltip")
         return checkbox
     }()
 
@@ -235,7 +235,7 @@ class FailoverGroupEditViewController: NSViewController {
 
     let deleteButton: NSButton = {
         let button = NSButton()
-        button.title = "Delete Failover Group"
+        button.title = tr("failoverGroupDeleteButtonTitle")
         button.setButtonType(.momentaryPushIn)
         button.bezelStyle = .rounded
         button.contentTintColor = .systemRed
@@ -440,7 +440,7 @@ class FailoverGroupEditViewController: NSViewController {
 
         // Settings label
         let settingsLabel = NSTextField()
-        settingsLabel.stringValue = "Failover Settings:"
+        settingsLabel.stringValue = tr("macFailoverGroupSettingsLabel")
         settingsLabel.isEditable = false
         settingsLabel.isSelectable = false
         settingsLabel.isBordered = false
@@ -530,41 +530,41 @@ class FailoverGroupEditViewController: NSViewController {
             return
         }
         guard selectedTunnelNames.count >= 2 else {
-            ErrorPresenter.showErrorAlert(title: "A failover group needs at least 2 tunnels.", message: "", from: self)
+            ErrorPresenter.showErrorAlert(title: tr("macFailoverGroupErrorNeedsTwo"), message: "", from: self)
             return
         }
 
         // Parse settings from text fields
         guard let timeout = TimeInterval(trafficTimeoutRow.value), timeout > 0 else {
-            ErrorPresenter.showErrorAlert(title: "Invalid traffic timeout value.", message: "", from: self)
+            ErrorPresenter.showErrorAlert(title: tr("macFailoverGroupErrorTrafficTimeout"), message: "", from: self)
             return
         }
         guard let healthCheck = TimeInterval(healthCheckIntervalRow.value), healthCheck > 0 else {
-            ErrorPresenter.showErrorAlert(title: "Invalid health check interval value.", message: "", from: self)
+            ErrorPresenter.showErrorAlert(title: tr("macFailoverGroupErrorHealthCheckInterval"), message: "", from: self)
             return
         }
         guard let failbackProbe = TimeInterval(failbackProbeIntervalRow.value), failbackProbe > 0 else {
-            ErrorPresenter.showErrorAlert(title: "Invalid failback probe interval value.", message: "", from: self)
+            ErrorPresenter.showErrorAlert(title: tr("macFailoverGroupErrorFailbackProbeInterval"), message: "", from: self)
             return
         }
 
         guard let confirmation = TimeInterval(confirmationTimeoutRow.value), confirmation > 0 else {
-            ErrorPresenter.showErrorAlert(title: "Invalid confirmation timeout value.", message: "", from: self)
+            ErrorPresenter.showErrorAlert(title: tr("macFailoverGroupErrorConfirmationTimeout"), message: "", from: self)
             return
         }
         guard let linkDownHold = TimeInterval(linkDownHoldTimeRow.value), linkDownHold >= 0 else {
-            ErrorPresenter.showErrorAlert(title: "Invalid link-down hold value.", message: "", from: self)
+            ErrorPresenter.showErrorAlert(title: tr("macFailoverGroupErrorLinkDownHold"), message: "", from: self)
             return
         }
         guard let pathGrace = TimeInterval(pathChangeGraceRow.value), pathGrace >= 0 else {
-            ErrorPresenter.showErrorAlert(title: "Invalid path change grace value.", message: "", from: self)
+            ErrorPresenter.showErrorAlert(title: tr("macFailoverGroupErrorPathChangeGrace"), message: "", from: self)
             return
         }
 
         var keepaliveOverride: UInt16?
         if persistentKeepaliveCheckbox.state == .on {
             guard let keepalive = UInt16(persistentKeepaliveValueRow.value), keepalive > 0 else {
-                ErrorPresenter.showErrorAlert(title: "Invalid keepalive interval value.", message: "", from: self)
+                ErrorPresenter.showErrorAlert(title: tr("macFailoverGroupErrorKeepaliveInterval"), message: "", from: self)
                 return
             }
             keepaliveOverride = keepalive
@@ -646,10 +646,10 @@ class FailoverGroupEditViewController: NSViewController {
     @objc func handleDeleteAction() {
         guard let tunnel = tunnel, let window = view.window else { return }
         let alert = NSAlert()
-        alert.messageText = "Delete Failover Group"
-        alert.informativeText = "Are you sure you want to delete '\(tunnel.name)'? This won't delete the individual tunnels."
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = tr("failoverGroupDeleteButtonTitle")
+        alert.informativeText = tr(format: "failoverGroupDeleteConfirmation (%@)", tunnel.name)
+        alert.addButton(withTitle: tr("actionDelete"))
+        alert.addButton(withTitle: tr("actionCancel"))
         alert.buttons.first?.hasDestructiveAction = true
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self = self, response == .alertFirstButtonReturn else { return }
@@ -667,7 +667,7 @@ class FailoverGroupEditViewController: NSViewController {
     @objc func handleAddTunnelAction() {
         let availableNames = tunnelsManager.mapTunnels { $0.name }.filter { !selectedTunnelNames.contains($0) }
         guard !availableNames.isEmpty else {
-            ErrorPresenter.showErrorAlert(title: "All available tunnels are already in this group.", message: "", from: self)
+            ErrorPresenter.showErrorAlert(title: tr("macFailoverGroupErrorAllTunnelsUsed"), message: "", from: self)
             return
         }
 
@@ -748,7 +748,7 @@ extension FailoverGroupEditViewController: NSTableViewDelegate {
         if column.identifier.rawValue == "ConnectionName" {
             label.stringValue = selectedTunnelNames[row]
         } else {
-            label.stringValue = row == 0 ? "Primary" : "Fallback #\(row)"
+            label.stringValue = row == 0 ? tr("failoverGroupRolePrimary") : tr(format: "failoverGroupRoleFallback (%d)", row)
             label.textColor = .secondaryLabelColor
         }
         return label

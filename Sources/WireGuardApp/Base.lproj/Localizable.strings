@@ -882,3 +882,39 @@
 "groupValidationNameEmpty" = "Name is empty";
 "groupValidationFailoverNeedsTwo" = "Failover group must have at least 2 tunnels";
 "groupValidationTiTSameTunnel" = "Outer and inner tunnels must be different";
+
+// MARK: - Failover group edit (macOS)
+
+"macFailoverGroupConnectionsLabel" = "Connections (in priority order):";
+"macFailoverGroupSettingsLabel" = "Failover Settings:";
+"macFailoverGroupConfirmTooltip" = "Require the next server to handshake before switching; hold if no server answers (likely a link outage).";
+"macFailoverGroupLinkDownHoldTooltip" = "How long to hold failover while no server is reachable. 0 = forever.";
+"macFailoverGroupAdaptiveTooltip" = "Lengthen the traffic timeout after outages that turned out to be the link, relaxing again after a quiet half hour.";
+
+"macFailoverGroupErrorNeedsTwo" = "A failover group needs at least 2 tunnels.";
+"macFailoverGroupErrorTrafficTimeout" = "Invalid traffic timeout value.";
+"macFailoverGroupErrorHealthCheckInterval" = "Invalid health check interval value.";
+"macFailoverGroupErrorFailbackProbeInterval" = "Invalid failback probe interval value.";
+"macFailoverGroupErrorConfirmationTimeout" = "Invalid confirmation timeout value.";
+"macFailoverGroupErrorLinkDownHold" = "Invalid link-down hold value.";
+"macFailoverGroupErrorPathChangeGrace" = "Invalid path change grace value.";
+"macFailoverGroupErrorKeepaliveInterval" = "Invalid keepalive interval value.";
+"macFailoverGroupErrorAllTunnelsUsed" = "All available tunnels are already in this group.";
+
+"macFailoverGroupMemberTooltip (%@)" = "Double-click to open '%@'";
+
+// MARK: - Tunnel-in-tunnel edit (macOS)
+
+"macTiTGroupOuterLabel" = "Outer Tunnel (Server A):";
+"macTiTGroupInnerLabel" = "Inner Tunnel (Server B):";
+"macTiTGroupFooter" = "Traffic is encrypted first by the inner tunnel, then by the outer tunnel.";
+"macTiTGroupErrorNoOuter" = "Please select an outer tunnel.";
+"macTiTGroupErrorNoInner" = "Please select an inner tunnel.";
+"macTiTGroupErrorSameTunnel" = "Outer and inner tunnels must be different.";
+
+// MARK: - Connection details (macOS)
+
+"macConnectionDetailsCopyButtonTitle" = "Copy";
+"macConnectionDetailsCopyTooltip" = "Copy all connection details as text";
+"macConnectionDetailsTitle (%@)" = "%@ — Connection Details";
+"macConnectionDetailsStatus (%1$@ and %2$@)" = "%1$@ · updated %2$@";

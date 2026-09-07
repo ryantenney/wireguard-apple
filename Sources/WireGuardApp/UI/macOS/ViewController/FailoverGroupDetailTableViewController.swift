@@ -34,15 +34,15 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseViewController {
 
         var localizedUIString: String {
             switch self {
-            case .trafficTimeout: return "Traffic Timeout"
-            case .healthCheckInterval: return "Health Check Interval"
-            case .failbackProbeInterval: return "Failback Probe Interval"
-            case .autoFailback: return "Auto Failback"
-            case .confirmBeforeFailover: return "Confirm Before Failover"
-            case .confirmationTimeout: return "Confirmation Timeout"
-            case .linkDownHoldTime: return "Link-Down Hold"
-            case .adaptiveSensitivity: return "Adaptive Sensitivity"
-            case .pathChangeGrace: return "Path Change Grace"
+            case .trafficTimeout: return tr("failoverGroupFieldTrafficTimeout")
+            case .healthCheckInterval: return tr("failoverGroupFieldHealthCheckInterval")
+            case .failbackProbeInterval: return tr("failoverGroupFieldFailbackProbeInterval")
+            case .autoFailback: return tr("failoverGroupToggleAutoFailback")
+            case .confirmBeforeFailover: return tr("failoverGroupToggleConfirmBeforeFailover")
+            case .confirmationTimeout: return tr("failoverGroupFieldConfirmationTimeout")
+            case .linkDownHoldTime: return tr("failoverGroupFieldLinkDownHold")
+            case .adaptiveSensitivity: return tr("failoverGroupToggleAdaptiveSensitivity")
+            case .pathChangeGrace: return tr("failoverGroupFieldPathChangeGrace")
             }
         }
     }
@@ -65,12 +65,12 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseViewController {
 
         var label: String {
             switch self {
-            case .active: return "Active"
-            case .unhealthy: return "Unhealthy"
-            case .hotSpareReady: return "Standby"
-            case .hotSpareWaiting: return "Connecting"
-            case .probing: return "Probing"
-            case .idle: return "Idle"
+            case .active: return tr("failoverGroupMemberStatusActive")
+            case .unhealthy: return tr("failoverGroupMemberStatusUnhealthy")
+            case .hotSpareReady: return tr("failoverGroupMemberStatusHotSpareReady")
+            case .hotSpareWaiting: return tr("failoverGroupMemberStatusHotSpareWaiting")
+            case .probing: return tr("failoverGroupMemberStatusProbing")
+            case .idle: return tr("failoverGroupMemberStatusIdle")
             }
         }
     }
@@ -88,15 +88,15 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseViewController {
 
         var localizedUIString: String {
             switch self {
-            case .activeConfig: return "Active Connection"
+            case .activeConfig: return tr("failoverGroupSectionActiveConnection")
             case .dataReceived: return tr("tunnelPeerRxBytes")
             case .dataSent: return tr("tunnelPeerTxBytes")
             case .lastHandshake: return tr("tunnelPeerLastHandshakeTime")
-            case .failoverCount: return "Failover Count"
-            case .lastFailover: return "Last Failover"
-            case .healthStatus: return "Health"
-            case .failbackProbe: return "Failback Probe"
-            case .hotSpare: return "Hot Spare"
+            case .failoverCount: return tr("failoverGroupFieldFailoverCount")
+            case .lastFailover: return tr("failoverGroupFieldLastFailover")
+            case .healthStatus: return tr("failoverGroupFieldHealthStatus")
+            case .failbackProbe: return tr("failoverGroupFieldFailbackProbe")
+            case .hotSpare: return tr("failoverGroupFieldHotSpare")
             }
         }
     }
@@ -331,33 +331,33 @@ class FailoverGroupDetailTableViewController: GroupDetailBaseViewController {
             if let since = state["txWithoutRxSince"] as? Double {
                 let duration = Int(Date().timeIntervalSince1970 - since)
                 if let heldSince = state["suppressedSince"] as? Double {
-                    return "Unhealthy, holding \(Int(Date().timeIntervalSince1970 - heldSince))s: no server reachable"
+                    return tr(format: "failoverGroupHealthHolding (%d)", Int(Date().timeIntervalSince1970 - heldSince))
                 }
                 if state["confirmationProbeHandle"] as? Int != nil {
-                    return "Unhealthy (\(duration)s), confirming next server…"
+                    return tr(format: "failoverGroupHealthConfirming (%d)", duration)
                 }
-                return "Unhealthy (tx without rx for \(duration)s)"
+                return tr(format: "failoverGroupHealthUnhealthy (%d)", duration)
             }
-            return "Healthy"
+            return tr("failoverGroupHealthHealthy")
         case .failbackProbe:
             if let bgProbe = state["backgroundProbeActive"] as? Bool, bgProbe {
-                return "Background probe running..."
+                return tr("failoverGroupProbeBackgroundRunning")
             }
-            return "Probing primary..."
+            return tr("failoverGroupProbePrimary")
         case .hotSpare:
             if let index = state["hotSpareConfigIndex"] as? Int {
-                let name = index < tunnelNames.count ? tunnelNames[index] : "config #\(index)"
+                let name = index < tunnelNames.count ? tunnelNames[index] : tr(format: "failoverGroupConfigFallbackName (%d)", index)
                 if let age = state["hotSpareHandshakeAge"] as? Double {
                     if age < settings.trafficTimeout {
-                        return "\(name): Connected (\(Int(age))s ago)"
+                        return tr(format: "failoverGroupHotSpareConnected (%1$@ and %2$d)", name, Int(age))
                     } else {
-                        return "\(name): Stale handshake (\(Int(age))s ago)"
+                        return tr(format: "failoverGroupHotSpareStale (%1$@ and %2$d)", name, Int(age))
                     }
                 }
                 let isActive = state["hotSpareActive"] as? Bool ?? false
-                return isActive ? "\(name): Waiting for handshake..." : "\(name): Starting..."
+                return isActive ? tr(format: "failoverGroupHotSpareWaiting (%@)", name) : tr(format: "failoverGroupHotSpareStarting (%@)", name)
             }
-            return "Active"
+            return tr("failoverGroupMemberStatusActive")
         }
     }
 
@@ -397,7 +397,7 @@ extension FailoverGroupDetailTableViewController: NSTableViewDelegate {
 
         case .tunnelRow(let name, let index):
             let cell: KeyValueRow = tableView.dequeueReusableCell()
-            let role = index == 0 ? "Primary" : "Failover #\(index)"
+            let role = index == 0 ? tr("failoverGroupRolePrimary") : tr(format: "failoverGroupRoleFailover (%d)", index)
             let status = connectionStatus(forTunnelAt: index)
             let circle = NSAttributedString(string: "\u{25CF} ", attributes: [
                 .foregroundColor: status.indicatorColor,
@@ -411,8 +411,8 @@ extension FailoverGroupDetailTableViewController: NSTableViewDelegate {
             combined.append(circle)
             combined.append(nameAttr)
             cell.keyLabel.attributedStringValue = combined
-            cell.value = "\(role) · \(status.label)"
-            cell.toolTip = "Double-click to open '\(name)'"
+            cell.value = tr(format: "failoverGroupRoleAndStatus (%1$@ and %2$@)", role, status.label)
+            cell.toolTip = tr(format: "macFailoverGroupMemberTooltip (%@)", name)
             return cell
 
         case .activeConnectionRow(let field):
@@ -427,23 +427,23 @@ extension FailoverGroupDetailTableViewController: NSTableViewDelegate {
             cell.key = tr(format: "macFieldKey (%@)", field.localizedUIString)
             switch field {
             case .trafficTimeout:
-                cell.value = "\(Int(settings.trafficTimeout))s"
+                cell.value = tr(format: "failoverGroupValueSeconds (%d)", Int(settings.trafficTimeout))
             case .healthCheckInterval:
-                cell.value = "\(Int(settings.healthCheckInterval))s"
+                cell.value = tr(format: "failoverGroupValueSeconds (%d)", Int(settings.healthCheckInterval))
             case .failbackProbeInterval:
-                cell.value = "\(Int(settings.failbackProbeInterval))s"
+                cell.value = tr(format: "failoverGroupValueSeconds (%d)", Int(settings.failbackProbeInterval))
             case .autoFailback:
-                cell.value = settings.autoFailback ? "Yes" : "No"
+                cell.value = settings.autoFailback ? tr("actionYes") : tr("actionNo")
             case .confirmBeforeFailover:
-                cell.value = settings.confirmBeforeFailover ? "Yes" : "No"
+                cell.value = settings.confirmBeforeFailover ? tr("actionYes") : tr("actionNo")
             case .confirmationTimeout:
-                cell.value = "\(Int(settings.confirmationTimeout))s"
+                cell.value = tr(format: "failoverGroupValueSeconds (%d)", Int(settings.confirmationTimeout))
             case .linkDownHoldTime:
-                cell.value = settings.linkDownHoldTime > 0 ? "\(Int(settings.linkDownHoldTime))s" : "Forever"
+                cell.value = settings.linkDownHoldTime > 0 ? tr(format: "failoverGroupValueSeconds (%d)", Int(settings.linkDownHoldTime)) : tr("failoverGroupValueForever")
             case .adaptiveSensitivity:
-                cell.value = settings.adaptiveSensitivity ? "Yes" : "No"
+                cell.value = settings.adaptiveSensitivity ? tr("actionYes") : tr("actionNo")
             case .pathChangeGrace:
-                cell.value = "\(Int(settings.pathChangeGrace))s"
+                cell.value = tr(format: "failoverGroupValueSeconds (%d)", Int(settings.pathChangeGrace))
             }
             cell.isKeyInBold = false
             return cell
@@ -475,7 +475,7 @@ extension FailoverGroupDetailTableViewController: NSTableViewDelegate {
             let cell: ButtonRow = tableView.dequeueReusableCell()
             switch action {
             case .forceFailover:
-                cell.buttonTitle = "Force Failover"
+                cell.buttonTitle = tr("failoverGroupForceFailoverButtonTitle")
                 cell.onButtonClicked = { [weak self] in
                     guard let self = self else { return }
                     self.tunnelsManager.debugForceFailover(for: self.tunnel) { success in
@@ -485,7 +485,7 @@ extension FailoverGroupDetailTableViewController: NSTableViewDelegate {
                     }
                 }
             case .forceFailback:
-                cell.buttonTitle = "Force Failback to Primary"
+                cell.buttonTitle = tr("failoverGroupForceFailbackButtonTitle")
                 cell.onButtonClicked = { [weak self] in
                     guard let self = self else { return }
                     self.tunnelsManager.debugForceFailback(for: self.tunnel) { success in
